@@ -1,0 +1,9 @@
+[submodule "xmip-core-provision-acme"]
+	path = acme
+	url = https://github.com/IlleNilsson/xmip-core-provision-acme.git
+[submodule "xmip-core-provision-internal-ca"]
+	path = internal-ca
+	url = https://github.com/IlleNilsson/xmip-core-provision-internal-ca.git
+[submodule "xmip-core-provision-self-signed"]
+	path = self-signed
+	url = https://github.com/IlleNilsson/xmip-core-provision-self-signed.git
