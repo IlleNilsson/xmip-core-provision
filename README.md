@@ -18,8 +18,11 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   for it may ask (`Purpose::admit`).
 - **`operator`** — a person's certificate, never obtained by a node:
   `request` makes a fresh key and a request naming the person; `information`
-  and `csr::assemble` are its two halves, for a key that never leaves its
-  keeper; `sign` signs a request by the authority `[provision.operator]`
+  and `assemble` are its two halves, for a key that never leaves its
+  platform's keeper — the keeper's public key read in either form a
+  platform hands it, `SubjectPublicKeyInfo` DER or the bare uncompressed
+  point, and the keeper's signature verified before the request is handed
+  back; `sign` signs a request by the authority `[provision.operator]`
   names (`OPERATOR`: `authority`, the folder it is kept in; `lifetime`,
   thirty days unless said).
 - **`Issuer`** — an authority's key and certificate and what it signs: a
