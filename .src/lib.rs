@@ -14,12 +14,17 @@
 //! read here, by [`Files`]. A provider may ship another by implementing
 //! [`Source`].
 //!
-//! **Two purposes.** A Receive Location presents what a Party reaches, and
+//! **Three purposes.** A Receive Location presents what a Party reaches, and
 //! needs server authentication alone; between nodes each end presents a
 //! certificate, so a node's needs server and client authentication both
 //! (ADR-0063 clause 1). Let's Encrypt has issued server authentication alone
 //! since 2026-07-08, so it can serve the first purpose and never the second
-//! (ADR-0033, amendment 2026-10-13).
+//! (ADR-0033, amendment 2026-10-13). A person's surface — the phone first —
+//! presents an operator's certificate to a node's operate listener: client
+//! authentication alone, its subject the person ([`Purpose::Operator`]). It
+//! is never obtained: the surface makes its own key and a request
+//! ([`operator`]), and the cluster's authority signs it ([`Issuer`]) once it
+//! is approved out of band (ADR-0034, amendment 2026-10-15).
 //!
 //! **Never a fixed lifetime.** A certificate is renewed at two thirds of the
 //! life it was issued with, read from the certificate itself
@@ -30,7 +35,9 @@
 //! **Written once.** The P-256 key ([`KeyPair`]), the CSR ([`csr`]) and the
 //! certificate ([`Draft`]) are written here over `xmip-core-library-asn1` and
 //! signed with aws-lc-rs, the crypto the TLS library already builds, so the
-//! technologies that request, issue or sign hold none of it (ADR-0044).
+//! technologies that request, issue or sign hold none of it (ADR-0044); and
+//! so is what an authority signs ([`Issuer`]), which a surface reaches
+//! through the runtime's export where a technology may not be linked.
 
 mod certificate;
 mod configuration;
@@ -38,7 +45,9 @@ pub mod csr;
 mod der;
 mod error;
 mod files;
+pub mod issuer;
 mod key;
+pub mod operator;
 pub mod pem;
 mod provisioned;
 mod provisioner;
@@ -48,9 +57,12 @@ mod usage;
 mod validity;
 
 pub use certificate::{Draft, Usage};
-pub use configuration::{Configured, FILES, NAMES, SOURCE, names, read};
+pub use configuration::{
+    Configured, FILES, NAMES, OPERATOR, OPERATOR_LIFETIME, SOURCE, names, read,
+};
 pub use error::ProvisionError;
 pub use files::Files;
+pub use issuer::Issuer;
 pub use key::{KeyPair, sha256, verify, verify_fixed};
 pub use provisioned::Provisioned;
 pub use provisioner::Provisioner;

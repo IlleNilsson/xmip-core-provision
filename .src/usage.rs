@@ -4,21 +4,25 @@
 
 use asn1::SEQUENCE;
 
-use crate::der::{CLIENT_AUTH, EXT_KEY_USAGE};
+use crate::der::EXT_KEY_USAGE;
 use crate::{Purpose, Result};
 
-/// Whether the certificate `der` serves `purpose`: server authentication
-/// for both, and client authentication too between nodes. A certificate
-/// with no extended key usage serves any.
+/// Whether the certificate `der` serves `purpose`: it names every usage the
+/// purpose's certificate carries (`Purpose::extended_key_usages`) — server
+/// authentication for what a Party reaches, client authentication for an
+/// operator, both between nodes. A certificate with no extended key usage
+/// serves any.
 ///
 /// # Errors
 ///
 /// Where `der` is not a certificate.
 pub fn serves(der: &[u8], purpose: Purpose) -> Result<bool> {
-    if !purpose.client_authentication() {
-        return Ok(true);
-    }
-    Ok(extended_key_usages(der)?.is_none_or(|usages| usages.iter().any(|u| u == CLIENT_AUTH)))
+    Ok(extended_key_usages(der)?.is_none_or(|usages| {
+        purpose
+            .extended_key_usages()
+            .into_iter()
+            .all(|needed| usages.iter().any(|usage| usage == needed))
+    }))
 }
 
 /// The extended key usages `der` names, or `None` where it names none.
@@ -76,5 +80,10 @@ mod tests {
         assert!(serves(&server, Purpose::Receive).expect("read"));
         assert!(!serves(&server, Purpose::Node).expect("read"));
         assert!(serves(&leaf(Purpose::Node), Purpose::Node).expect("read"));
+        let operator = leaf(Purpose::Operator);
+        assert!(serves(&operator, Purpose::Operator).expect("read"));
+        assert!(!serves(&operator, Purpose::Receive).expect("read"));
+        assert!(!serves(&operator, Purpose::Node).expect("read"));
+        assert!(!serves(&server, Purpose::Operator).expect("read"));
     }
 }

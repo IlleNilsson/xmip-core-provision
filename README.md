@@ -10,7 +10,23 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   DNS names it is for, and the purpose's place, where a source keeps its own
   state between orders. A provider ships a source by implementing it.
 - **`Purpose`** — `receive`, what a Party reaches, server authentication
-  alone; `node`, between nodes, server and client authentication.
+  alone; `node`, between nodes, server and client authentication;
+  `operator`, a person's surface reaching a node's operate listener, client
+  authentication alone, its subject the person (ADR-0034, amendment
+  2026-10-15). Every rule that follows from a purpose is `purpose.rs`'s:
+  what it authenticates, what a person's name may be, and what a request
+  for it may ask (`Purpose::admit`).
+- **`operator`** — a person's certificate, never obtained by a node:
+  `request` makes a fresh key and a request naming the person; `information`
+  and `csr::assemble` are its two halves, for a key that never leaves its
+  keeper; `sign` signs a request by the authority `[provision.operator]`
+  names (`OPERATOR`: `authority`, the folder it is kept in; `lifetime`,
+  thirty days unless said).
+- **`Issuer`** — an authority's key and certificate and what it signs: a
+  certificate for a key and a purpose, or for a request once its signature
+  verifies and its purpose admits it. `internal-ca` signs through it, and so
+  does the runtime's export the surfaces call (`xmip_operate.h` section 19),
+  since the runtime may link no technology.
 - **`Provisioner`** — one purpose's certificate kept in its place, read back
   after a restart, and obtained again at two thirds of the life it was
   issued with, read from the certificate itself: no lifetime is assumed
@@ -33,7 +49,7 @@ Mounted beside `.src` (ADR-0049):
 | technology | what |
 | --- | --- |
 | `acme` | RFC 8555 against any directory a node names; http-01 on any port, dns-01 through a provider's `DnsWriter` |
-| `internal-ca` | the cluster's own authority, issuing node certificates for server and client authentication, served over ACME |
+| `internal-ca` | the cluster's own authority, issuing node certificates for server and client authentication, served over ACME, and signing a person's request |
 | `self-signed` | a lone offline node's certificate, its own anchor |
 
 `platform` — a managed platform's issuer — is reserved in `architecture.toml`.

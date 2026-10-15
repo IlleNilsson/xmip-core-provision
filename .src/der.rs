@@ -127,6 +127,51 @@ pub fn read_alternative_names(value: &[u8]) -> Result<Vec<String>> {
         .collect())
 }
 
+/// The attributes a `Name` holds, each its type and its value as text, in
+/// the order written.
+///
+/// # Errors
+///
+/// Where it is not a `Name`, or a value is not text.
+pub fn read_name(name: &[u8]) -> Result<Vec<(Vec<u32>, String)>> {
+    let (sets, _) = asn1::expect(name, SEQUENCE)?;
+    let mut attributes = Vec::new();
+    for (_, set) in asn1::read_all(sets)? {
+        for (_, attribute) in asn1::read_all(set)? {
+            let (kind, rest) = asn1::expect(attribute, OBJECT_IDENTIFIER)?;
+            let (_, value, _) = asn1::read(rest)?;
+            let text = core::str::from_utf8(value)
+                .map_err(|_| ProvisionError::new("a name's value is not text"))?;
+            attributes.push((asn1::read_object_identifier(kind)?, text.to_string()));
+        }
+    }
+    Ok(attributes)
+}
+
+/// The subject of the certificate `der`, its `Name` whole, as an issuer
+/// names itself in what it signs.
+///
+/// # Errors
+///
+/// Where `der` is not a certificate.
+pub fn subject_of(der: &[u8]) -> Result<Vec<u8>> {
+    let (certificate, _) = asn1::expect(der, SEQUENCE)?;
+    let (tbs, _) = asn1::expect(certificate, SEQUENCE)?;
+    let mut rest = tbs;
+    if let (tag, _, after) = asn1::read(rest)?
+        && tag == asn1::context(0, true)
+    {
+        rest = after;
+    }
+    // The serial, the signature algorithm, the issuer and the validity come
+    // before the subject.
+    for _ in 0..4 {
+        rest = asn1::read(rest)?.2;
+    }
+    let (_, _, after) = asn1::read(rest)?;
+    Ok(rest[..rest.len() - after.len()].to_vec())
+}
+
 /// One extension: its identifier, critical or not, and its value's DER.
 #[must_use]
 pub fn extension(arcs: &[u32], critical: bool, value: &[u8]) -> Vec<u8> {
@@ -221,5 +266,15 @@ mod tests {
         );
         let foreign = sequence(&[&sequence(&[&oid(&[1, 2, 840, 113_549, 1, 1, 1])])]);
         assert!(point_of(&foreign).is_err());
+    }
+
+    #[test]
+    fn a_name_is_read_back_as_its_attributes() {
+        let read = read_name(&name("alice@example.org")).expect("read");
+        assert_eq!(
+            read,
+            [(COMMON_NAME.to_vec(), "alice@example.org".to_string())]
+        );
+        assert!(read_name(&[0x02, 0x01, 0x00]).is_err());
     }
 }
