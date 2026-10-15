@@ -9,8 +9,8 @@
 use asn1::{INTEGER, tlv};
 
 use crate::der::{
-    BASIC_CONSTRAINTS, CLIENT_AUTH, EXT_KEY_USAGE, KEY_USAGE, SERVER_AUTH, SUBJECT_ALT_NAME,
-    alternative_names, ecdsa_sha256, extension, name, oid, sequence, time,
+    BASIC_CONSTRAINTS, EXT_KEY_USAGE, KEY_USAGE, SUBJECT_ALT_NAME, alternative_names, ecdsa_sha256,
+    extension, name, oid, sequence, time,
 };
 use crate::{KeyPair, ProvisionError, Purpose, Result};
 
@@ -55,6 +55,16 @@ impl Draft<'_> {
     /// Where it ends before it starts, a time is before 1970, or signing
     /// fails.
     pub fn sign(&self, issuer: &str, issuer_key: &KeyPair) -> Result<Vec<u8>> {
+        self.sign_under(&name(issuer), issuer_key)
+    }
+
+    /// The certificate, DER, signed by `issuer_key` in the name `issuer`
+    /// holds, a `Name` whole: as an authority's own certificate names it.
+    ///
+    /// # Errors
+    ///
+    /// As [`Draft::sign`].
+    pub fn sign_under(&self, issuer: &[u8], issuer_key: &KeyPair) -> Result<Vec<u8>> {
         if self.not_after <= self.not_before {
             return Err(ProvisionError::new(
                 "a certificate must end after it starts",
@@ -66,7 +76,7 @@ impl Draft<'_> {
             &tlv(asn1::context(0, true), &tlv(INTEGER, &[2])),
             &tlv(INTEGER, &serial()),
             &ecdsa_sha256(),
-            &name(issuer),
+            issuer,
             &validity,
             &name(self.subject),
             self.public_key_info,
@@ -92,17 +102,26 @@ impl Draft<'_> {
                 .concat()
             }
             Usage::Leaf(purpose) => {
-                let mut usages = oid(SERVER_AUTH);
-                if purpose.client_authentication() {
-                    usages.extend(oid(CLIENT_AUTH));
-                }
-                [
+                let usages: Vec<u8> = purpose
+                    .extended_key_usages()
+                    .into_iter()
+                    .flat_map(oid)
+                    .collect();
+                let mut written = [
                     extension(BASIC_CONSTRAINTS, true, &sequence(&[])),
                     extension(KEY_USAGE, true, &LEAF_USAGE),
                     extension(EXT_KEY_USAGE, false, &sequence(&[&usages])),
-                    extension(SUBJECT_ALT_NAME, false, &alternative_names(self.names)),
                 ]
-                .concat()
+                .concat();
+                // A person's certificate names no host.
+                if !self.names.is_empty() {
+                    written.extend(extension(
+                        SUBJECT_ALT_NAME,
+                        false,
+                        &alternative_names(self.names),
+                    ));
+                }
+                written
             }
         }
     }

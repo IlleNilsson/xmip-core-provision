@@ -5,10 +5,15 @@
 //! names a key store, and the rest of the table is that technology's
 //! settings, read through its own declaration (ADR-0044, amendment
 //! 2026-09-26). A table that names no source is an operator's own files,
-//! read through [`FILES`]. A source the program does not link is refused,
+//! read through [`FILES`]; `[provision.operator]` is the one that never
+//! names a source, read through [`OPERATOR`]. A source the program does not link is refused,
 //! naming the ones it does.
 
-use xcore::settings::{Applies, Given, Kind, Presence, Read, Refusal, Refused, Setting, Settings};
+use std::time::Duration;
+
+use xcore::settings::{
+    Applies, Fixed, Given, Kind, Presence, Read, Refusal, Refused, Setting, Settings,
+};
 
 use crate::Purpose;
 
@@ -57,6 +62,35 @@ pub const FILES: &Settings = &Settings {
     ],
 };
 
+/// How long an operator's certificate is valid where `[provision.operator]`
+/// says nothing: thirty days. The assistant's draft of 2026-10-15, for the
+/// owner to strike; a cluster sets its own, and a node its own beside it.
+pub const OPERATOR_LIFETIME: Duration = Duration::from_hours(30 * 24);
+
+/// `[provision.operator]`: on the node whose authority signs a person's
+/// request (ADR-0034, amendment 2026-10-15). It names no `source`: an
+/// operator's certificate is signed from a request, never obtained.
+pub const OPERATOR: &Settings = &Settings {
+    technology: CAPABILITY,
+    settings: &[
+        Setting {
+            name: "authority",
+            kind: Kind::Address,
+            presence: Presence::Required,
+            meaning: "The folder the cluster's authority is kept in — its authority.key and \
+                      authority.pem — relative to the configuration file.",
+            applies: Applies::Both,
+        },
+        Setting {
+            name: "lifetime",
+            kind: Kind::Duration,
+            presence: Presence::Default(Fixed::Duration(OPERATOR_LIFETIME)),
+            meaning: "How long an operator's certificate the authority signs is valid.",
+            applies: Applies::Both,
+        },
+    ],
+};
+
 /// A purpose's table, read.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Configured {
@@ -94,6 +128,15 @@ pub fn read(
         .find(|(key, _)| key == SOURCE)
         .map(|(_, value)| value);
     let declaration = match chosen {
+        _ if named == Some(Purpose::Operator) => {
+            if chosen.is_some() {
+                refusals.push(Refusal::Unknown {
+                    technology: CAPABILITY,
+                    setting: format!("provision.operator.{SOURCE}"),
+                });
+            }
+            Some(OPERATOR)
+        }
         None => Some(FILES),
         Some(Given::Text(name)) => {
             let found = sources
@@ -198,6 +241,7 @@ mod tests {
     #[test]
     fn every_declaration_here_is_sound() {
         assert!(FILES.problems().is_empty(), "{:?}", FILES.problems());
+        assert!(OPERATOR.problems().is_empty(), "{:?}", OPERATOR.problems());
         assert!(SOURCE_A.problems().is_empty(), "{:?}", SOURCE_A.problems());
     }
 
@@ -223,6 +267,25 @@ mod tests {
             read("receive", &given, &[]).expect("files").technology,
             CAPABILITY
         );
+    }
+
+    #[test]
+    fn the_operator_table_names_an_authority_and_no_source_and_its_lifetime_defaults() {
+        let table = read_operator(&[text("authority", "ca")]);
+        assert_eq!(table.purpose, Purpose::Operator);
+        assert_eq!(table.settings.duration("lifetime"), OPERATOR_LIFETIME);
+        let given = [text("authority", "ca"), text("lifetime", "8h")];
+        let table = read_operator(&given);
+        assert_eq!(table.settings.duration("lifetime").as_secs(), 8 * 3600);
+        let given = [text(SOURCE, SOURCE_A.technology), text("authority", "ca")];
+        let refused = read("operator", &given, &[SOURCE_A]).expect_err("a source");
+        assert!(refused.0[0].to_string().contains("source"), "{refused:?}");
+        let refused = read("operator", &[], &[]).expect_err("no authority");
+        assert_eq!(refused.0[0].setting(), "authority");
+    }
+
+    fn read_operator(given: &[(String, Given)]) -> Configured {
+        read("operator", given, &[]).expect("read")
     }
 
     #[test]
