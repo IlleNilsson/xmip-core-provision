@@ -21,7 +21,8 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   `request_into` writes them into a folder as `operator.key` and
   `operator.csr`, private files never written over one, the key never handed
   to the surface that asked; `keep` writes a chain or anchors a surface
-  keeps whole and synced; `information`
+  keeps whole and synced, replacing what was there where asked and else
+  never over a file already there; `information`
   and `assemble` are its two halves, for a key that never leaves its
   platform's keeper — the keeper's public key read in either form a
   platform hands it, `SubjectPublicKeyInfo` DER or the bare uncompressed

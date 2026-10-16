@@ -152,18 +152,32 @@ pub fn request_into(person: &str, folder: &Path) -> Result<Requested> {
 }
 
 /// `text` — a chain an authority signed, or the anchors a surface trusts,
-/// PEM and not secret — kept whole at `path` in place of what was there:
-/// written beside it, synced and renamed over it
+/// PEM and not secret — kept whole at `path`: written beside it and synced,
+/// then, where `replace`, renamed over what was there
 /// (`secret::private_file::replace_readable`), so a reader finds the old
-/// file or the new one, never half of either. What the text must be is the
-/// surface's to check first.
+/// file or the new one, never half of either; else linked where nothing is
+/// (`secret::private_file::create_readable`), never over a file already
+/// there. What the text must be is the surface's to check first.
 ///
 /// # Errors
 ///
-/// Where the file cannot be written, naming it.
-pub fn keep(path: &Path, text: &str) -> Result<()> {
-    secret::private_file::replace_readable(path, text.as_bytes()).map_err(|failure| {
-        crate::ProvisionError::new(format!("writing {}: {failure}", path.display()))
+/// Where `replace` is false and a file is at `path` already, or the file
+/// cannot be written; each naming it.
+pub fn keep(path: &Path, text: &str, replace: bool) -> Result<()> {
+    let kept = if replace {
+        secret::private_file::replace_readable(path, text.as_bytes())
+    } else {
+        secret::private_file::create_readable(path, text.as_bytes())
+    };
+    kept.map_err(|failure| {
+        crate::ProvisionError::new(if failure.kind() == std::io::ErrorKind::AlreadyExists {
+            format!(
+                "{} is there already; nothing is overwritten.",
+                path.display()
+            )
+        } else {
+            format!("writing {}: {failure}", path.display())
+        })
     })
 }
 
@@ -255,6 +269,23 @@ mod tests {
         assert!(request_into("CN=frank", &other).is_err());
         assert!(!other.join(KEY_FILE).exists(), "a refusal writes nothing");
         let _ = std::fs::remove_dir_all(folder.parent().expect("base"));
+    }
+
+    #[test]
+    fn a_chain_is_replaced_where_asked_and_else_never_written_over_a_file() {
+        let base = std::env::temp_dir().join(format!("xmip-provision-keep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let chain = base.join("operator.pem");
+        keep(&chain, "first", false).expect("created");
+        let refused = keep(&chain, "second", false).expect_err("there already");
+        assert!(
+            refused.message.contains("nothing is overwritten"),
+            "{refused}"
+        );
+        assert_eq!(std::fs::read_to_string(&chain).expect("kept"), "first");
+        keep(&chain, "renewed", true).expect("replaced");
+        assert_eq!(std::fs::read_to_string(&chain).expect("kept"), "renewed");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     fn information_refused(public: &[u8]) -> bool {
