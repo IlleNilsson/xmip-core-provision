@@ -4,7 +4,8 @@
 //! may reach the authority's key and runs the signing.
 //!
 //! Both halves are here, once: [`request`] for a surface that holds its key
-//! as a PEM file, [`information`] and [`assemble`] for one whose key never
+//! as a PEM file, written by [`request_into`] as a private file, never
+//! handed to the surface; [`information`] and [`assemble`] for one whose key never
 //! leaves its keeper (a phone's keystore signs the information and the two
 //! make the request), and [`sign`] for the authority's side, held to
 //! [`Purpose::Operator`]'s rules and to `[provision.operator]`.
@@ -97,6 +98,75 @@ pub fn request(person: &str) -> Result<Request> {
     })
 }
 
+/// The file a surface keeps an operator's key in, in the folder it names.
+pub const KEY_FILE: &str = "operator.key";
+
+/// The file the request is written to beside it.
+pub const REQUEST_FILE: &str = "operator.csr";
+
+/// Where [`request_into`] wrote the key and the request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Requested {
+    /// The key, [`KEY_FILE`] in the folder: a private file.
+    pub key: std::path::PathBuf,
+    /// The request, [`REQUEST_FILE`] beside it.
+    pub request: std::path::PathBuf,
+}
+
+/// A fresh key and an operator's request for `person` ([`request`]),
+/// written into `folder` as [`KEY_FILE`] and [`REQUEST_FILE`], each a
+/// private file ([`secret::private_file`]): the key's bytes leave this
+/// process for its file alone. Files already there are never overwritten,
+/// and where the request cannot be written the key is removed again, so a
+/// refusal writes nothing.
+///
+/// # Errors
+///
+/// Where `person` is not a person's name, either file is there already, or
+/// a file cannot be written; each in words.
+pub fn request_into(person: &str, folder: &Path) -> Result<Requested> {
+    let written = Requested {
+        key: folder.join(KEY_FILE),
+        request: folder.join(REQUEST_FILE),
+    };
+    if let Some(there) = [&written.key, &written.request]
+        .into_iter()
+        .find(|path| path.exists())
+    {
+        return Err(crate::ProvisionError::new(format!(
+            "{} is there already; nothing is overwritten.",
+            there.display()
+        )));
+    }
+    let made = request(person)?;
+    let failed = |path: &Path, failure: std::io::Error| {
+        crate::ProvisionError::new(format!("writing {}: {failure}", path.display()))
+    };
+    secret::private_file::create(&written.key, made.key.as_bytes())
+        .map_err(|failure| failed(&written.key, failure))?;
+    if let Err(failure) = secret::private_file::create(&written.request, made.request.as_bytes()) {
+        let _ = std::fs::remove_file(&written.key);
+        return Err(failed(&written.request, failure));
+    }
+    Ok(written)
+}
+
+/// `text` — a chain an authority signed, or the anchors a surface trusts,
+/// PEM and not secret — kept whole at `path` in place of what was there:
+/// written beside it, synced and renamed over it
+/// (`secret::private_file::replace_readable`), so a reader finds the old
+/// file or the new one, never half of either. What the text must be is the
+/// surface's to check first.
+///
+/// # Errors
+///
+/// Where the file cannot be written, naming it.
+pub fn keep(path: &Path, text: &str) -> Result<()> {
+    secret::private_file::replace_readable(path, text.as_bytes()).map_err(|failure| {
+        crate::ProvisionError::new(format!("writing {}: {failure}", path.display()))
+    })
+}
+
 /// The operator's certificate for the request `text`, PEM, as a chain: the
 /// leaf, then the authority. Signed by the authority `[provision.operator]`
 /// names in `settings` — `authority`, relative to `base`, the folder its
@@ -147,6 +217,44 @@ mod tests {
         assert!(refused.message.contains("keeper"), "{refused}");
         assert!(information_refused(&[0x04; 64]));
         assert!(information_refused(b"no key"));
+    }
+
+    #[test]
+    fn a_request_is_written_into_a_folder_its_key_private_and_never_over_a_file() {
+        let folder = std::env::temp_dir()
+            .join(format!("xmip-provision-request-{}", std::process::id()))
+            .join("phone");
+        let _ = std::fs::remove_dir_all(folder.parent().expect("base"));
+        let written = request_into("frank@example.org", &folder).expect("written");
+        assert_eq!(written.key, folder.join(KEY_FILE));
+        let key = std::fs::read_to_string(&written.key).expect("key");
+        assert!(KeyPair::from_pem(&key).is_ok(), "the key is a PEM key");
+        let text = std::fs::read_to_string(&written.request).expect("request");
+        let der = pem::decode(REQUEST_LABEL, &text).expect("pem").remove(0);
+        let public = KeyPair::from_pem(&key).expect("key").public_key_info();
+        assert_eq!(csr::read(&der).expect("read").public_key_info, public);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let mode = std::fs::metadata(&written.key).expect("metadata").mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+        #[cfg(windows)]
+        assert_eq!(
+            secret::private_file::described(&written.key).expect("described"),
+            secret::private_file::owner_only(false).expect("owner only")
+        );
+
+        let refused = request_into("frank@example.org", &folder).expect_err("there");
+        assert!(
+            refused.message.contains("nothing is overwritten"),
+            "{refused}"
+        );
+        assert_eq!(std::fs::read_to_string(&written.key).expect("key"), key);
+        let other = folder.with_file_name("other");
+        assert!(request_into("CN=frank", &other).is_err());
+        assert!(!other.join(KEY_FILE).exists(), "a refusal writes nothing");
+        let _ = std::fs::remove_dir_all(folder.parent().expect("base"));
     }
 
     fn information_refused(public: &[u8]) -> bool {

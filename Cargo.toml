@@ -30,6 +30,10 @@ codec = { package = "xmip-core-library-codec", git = "https://github.com/IlleNil
 aws-lc-rs = { version = "1", features = ["prebuilt-nasm"] }
 # A private key's bytes are overwritten when they are dropped.
 zeroize = "1"
+# The key home: every key and identity this capability and its technologies
+# keep on disk is a private file (secret::private_file), owner-only before
+# its first byte, synced and switched whole — written there, once.
+secret = { package = "xmip-core-secret", git = "https://github.com/IlleNilsson/xmip-core-secret", branch = "main" }
 
 [lints.rust]
 # forbid, not deny: a module has no business writing unsafe. The one exception
