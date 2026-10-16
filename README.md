@@ -17,7 +17,11 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   what it authenticates, what a person's name may be, and what a request
   for it may ask (`Purpose::admit`).
 - **`operator`** — a person's certificate, never obtained by a node:
-  `request` makes a fresh key and a request naming the person; `information`
+  `request` makes a fresh key and a request naming the person, and
+  `request_into` writes them into a folder as `operator.key` and
+  `operator.csr`, private files never written over one, the key never handed
+  to the surface that asked; `keep` writes a chain or anchors a surface
+  keeps whole and synced; `information`
   and `assemble` are its two halves, for a key that never leaves its
   platform's keeper — the keeper's public key read in either form a
   platform hands it, `SubjectPublicKeyInfo` DER or the bare uncompressed
@@ -36,7 +40,14 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   (CA/Browser Forum ballot SC-081 is shortening public ones). A renewal
   that fails keeps the certificate held until it expires.
 - **`Provisioned`** — the chain, leaf first, its key and the anchors, PEM,
-  as `xmip-core-library-tls` takes them.
+  as `xmip-core-library-tls` takes them. Kept in the purpose's place as one
+  switch: `chain.pem`, `key.pem` and `anchors.pem` are written into a new
+  folder `generation-<random>`, each a private file
+  (`xmip-core-secret`'s `private_file`: owner-only before its first byte,
+  synced), and only then does the file `current` name that folder, replaced
+  whole. A reader follows `current`, so it always finds a chain beside its
+  own key; a crash at any step leaves the identity kept before, and the
+  folder it left is removed at the next write.
 - **`KeyPair`, `csr`, `Draft`** — the P-256 key, the PKCS #10 request and
   the X.509 certificate, written once over `xmip-core-library-asn1` and
   signed with aws-lc-rs, the crypto the TLS library already builds; `serves`
@@ -61,10 +72,17 @@ Mounted beside `.src` (ADR-0049):
 
 Not usage: presenting and verifying a certificate is
 `xmip-core-library-tls`. Not yet read by `xmip-service`, which starts no
-provisioner (open problem 27). A provisioned key is a PEM file in the
-purpose's place, not sealed under the key home (ADR-0063 clause 4).
+provisioner (open problem 27). A provisioned key is a private PEM file in the
+purpose's place, readable by the Service Identity alone, not sealed under the
+key home's key-encryption key (ADR-0063 clause 4).
 
 ## Verification
 
-`cargo clippy --all-targets -- -D warnings` and `cargo test`. The workflow is
-manual-only and calls the versioned shared workflow at `IlleNilsson/.github@v1`.
+`cargo clippy --all-targets -- -D warnings` and `cargo test`: an identity is
+read back whole, its key, folder and place the owner's alone (the mode on
+Unix, the access list on Windows); a crash after a new generation is written
+and before the switch, or halfway through writing one, leaves the old chain
+with the old key, and the next write sweeps both; a `current` naming no
+generation is refused; an operator's key and request are written private and
+never over a file. Run on Windows and on Linux. The workflow is manual-only
+and calls the versioned shared workflow at `IlleNilsson/.github@v1`.
