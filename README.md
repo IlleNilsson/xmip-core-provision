@@ -48,6 +48,18 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   operator request. The runtime reaches it through `xmip_operate.h` section
   21. `AUTHORITY_LIFETIME`, a year, and `HOST_LIFETIME`, thirty days, are
   the assistant's draft of 2026-10-21, for the owner to strike.
+- **`node`** — a node's certificate from the cluster's own authority, for a
+  node an environment template puts on a machine of its own (ADR-0015,
+  amendment 2026-10-21), since `xmip-service` starts no provisioner yet:
+  `issue_into` keeps or makes the authority in a folder and issues the node
+  a fresh key and a certificate for server and client authentication, its
+  subject the node and its names the node's and every name it is reached
+  by, written as `node.pem`, `node.key` and `anchors.pem`, the authority's
+  certificate, private files in place of what was there — the files a
+  node's `[operate]` names. The same fresh key and issuing as `host`'s
+  (`host::Fresh`). The runtime reaches it through `xmip_operate.h` section
+  22. `NODE_LIFETIME`, ninety days, is the assistant's draft of 2026-10-21,
+  for the owner to strike.
 - **Alternative names** — a name that is an IP address is written as an
   `iPAddress`, its four or sixteen octets (RFC 5280 section 4.2.1.6), every
   other name as a `dNSName`: a browser checks `https://127.0.0.1` against

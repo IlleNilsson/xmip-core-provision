@@ -46,6 +46,12 @@
 //! `iPAddress`) — and signs the tester's operator request, so the
 //! Playground's web GUI is acted in with an operator certificate (ADR-0009,
 //! amendment 2026-10-21).
+//!
+//! **A node put on a machine of its own** ([`node`]). The same kept
+//! authority, the cluster's, issues a node a fresh key and a certificate for
+//! server and client authentication, for every name it is reached by, into
+//! a folder holding its anchors too: what an environment template gives a
+//! node machine (ADR-0015, amendment 2026-10-21).
 
 mod certificate;
 mod configuration;
@@ -56,6 +62,7 @@ mod files;
 pub mod host;
 pub mod issuer;
 mod key;
+pub mod node;
 pub mod operator;
 pub mod pem;
 mod provisioned;

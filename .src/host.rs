@@ -64,30 +64,64 @@ pub fn issue_into(
             "a host's certificate names the host a browser reaches it by",
         ));
     }
-    let seconds = |lifetime: Duration| i64::try_from(lifetime.as_secs()).unwrap_or(i64::MAX / 2);
     let authorized = Issuer::kept_or_made(authority, name, now, seconds(AUTHORITY_LIFETIME))?;
-    let fresh = KeyPair::generate()?;
-    let chain = authorized.issue(
-        &fresh.public_key_info(),
-        host,
-        &[host.to_string()],
-        Purpose::Receive,
-        now,
-        now.saturating_add(seconds(HOST_LIFETIME)),
-    )?;
     let written = Issued {
         certificate: folder.join(CERTIFICATE_FILE),
         key: folder.join(KEY_FILE),
         anchor: authority.join(CERTIFICATE),
     };
-    let failed = |path: &Path, failure: std::io::Error| {
-        ProvisionError::new(format!("writing {}: {failure}", path.display()))
+    let names = [host.to_string()];
+    let fresh = Fresh {
+        subject: host,
+        names: &names,
+        purpose: Purpose::Receive,
+        lifetime: HOST_LIFETIME,
     };
-    secret::private_file::replace(&written.key, fresh.pem().as_bytes())
-        .map_err(|failure| failed(&written.key, failure))?;
-    secret::private_file::replace(&written.certificate, chain.as_bytes())
-        .map_err(|failure| failed(&written.certificate, failure))?;
+    fresh.issued_into(&authorized, now, &written)?;
     Ok(written)
+}
+
+/// `lifetime` in whole seconds, as a certificate's validity counts it.
+pub(crate) fn seconds(lifetime: Duration) -> i64 {
+    i64::try_from(lifetime.as_secs()).unwrap_or(i64::MAX / 2)
+}
+
+/// A fresh key and the certificate an authority issues for it: what a host
+/// and a node are given alike.
+pub(crate) struct Fresh<'a> {
+    pub subject: &'a str,
+    pub names: &'a [String],
+    pub purpose: Purpose,
+    pub lifetime: Duration,
+}
+
+impl Fresh<'_> {
+    /// A fresh key, and its certificate under `authorized` from `now`,
+    /// written as `written` names them, each a private file in place of
+    /// what was there.
+    pub(crate) fn issued_into(
+        &self,
+        authorized: &Issuer,
+        now: i64,
+        written: &Issued,
+    ) -> Result<()> {
+        let fresh = KeyPair::generate()?;
+        let chain = authorized.issue(
+            &fresh.public_key_info(),
+            self.subject,
+            self.names,
+            self.purpose,
+            now,
+            now.saturating_add(seconds(self.lifetime)),
+        )?;
+        let failed = |path: &Path, failure: std::io::Error| {
+            ProvisionError::new(format!("writing {}: {failure}", path.display()))
+        };
+        secret::private_file::replace(&written.key, fresh.pem().as_bytes())
+            .map_err(|failure| failed(&written.key, failure))?;
+        secret::private_file::replace(&written.certificate, chain.as_bytes())
+            .map_err(|failure| failed(&written.certificate, failure))
+    }
 }
 
 #[cfg(test)]
