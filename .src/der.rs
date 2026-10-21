@@ -102,12 +102,19 @@ pub fn point_of(info: &[u8]) -> Result<Vec<u8>> {
     }
 }
 
-/// The alternative names `names` are, each a `dNSName`.
+/// The alternative names `names` are: an IP address an `iPAddress`, its
+/// four or sixteen octets (RFC 5280 section 4.2.1.6) — what a browser
+/// checks a host reached at `127.0.0.1` against, and never a `dNSName` —
+/// and every other name a `dNSName`.
 #[must_use]
 pub fn alternative_names(names: &[String]) -> Vec<u8> {
     let entries: Vec<u8> = names
         .iter()
-        .flat_map(|name| tlv(asn1::context(2, false), name.as_bytes()))
+        .flat_map(|name| match name.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V4(address)) => tlv(asn1::context(7, false), &address.octets()),
+            Ok(std::net::IpAddr::V6(address)) => tlv(asn1::context(7, false), &address.octets()),
+            Err(_) => tlv(asn1::context(2, false), name.as_bytes()),
+        })
         .collect();
     tlv(SEQUENCE, &entries)
 }
@@ -266,6 +273,32 @@ mod tests {
         );
         let foreign = sequence(&[&sequence(&[&oid(&[1, 2, 840, 113_549, 1, 1, 1])])]);
         assert!(point_of(&foreign).is_err());
+    }
+
+    #[test]
+    fn an_ip_address_is_written_as_an_ip_address_and_never_as_a_dns_name() {
+        let names = [
+            "127.0.0.1".to_string(),
+            "::1".to_string(),
+            "h.example".to_string(),
+        ];
+        let written = alternative_names(&names);
+        let (contents, _) = asn1::expect(&written, SEQUENCE).expect("a sequence");
+        let entries = asn1::read_all(contents).expect("names");
+        let mut loopback = [0u8; 16];
+        loopback[15] = 1;
+        assert_eq!(
+            entries,
+            [
+                (asn1::context(7, false), &[127, 0, 0, 1][..]),
+                (asn1::context(7, false), &loopback[..]),
+                (asn1::context(2, false), &b"h.example"[..]),
+            ]
+        );
+        assert_eq!(
+            read_alternative_names(&written).expect("read"),
+            ["h.example"]
+        );
     }
 
     #[test]

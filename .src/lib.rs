@@ -38,6 +38,14 @@
 //! technologies that request, issue or sign hold none of it (ADR-0044); and
 //! so is what an authority signs ([`Issuer`]), which a surface reaches
 //! through the runtime's export where a technology may not be linked.
+//!
+//! **A web host on this machine** ([`host`]). An authority kept in a
+//! folder, made there where none is as the cluster's own is
+//! ([`Issuer::kept_or_made`]), issues the host a certificate for the name a
+//! browser reaches it by — an IP address written as one (RFC 5280
+//! `iPAddress`) — and signs the tester's operator request, so the
+//! Playground's web GUI is acted in with an operator certificate (ADR-0009,
+//! amendment 2026-10-21).
 
 mod certificate;
 mod configuration;
@@ -45,6 +53,7 @@ pub mod csr;
 mod der;
 mod error;
 mod files;
+pub mod host;
 pub mod issuer;
 mod key;
 pub mod operator;

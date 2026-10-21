@@ -34,7 +34,24 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   certificate for a key and a purpose, or for a request once its signature
   verifies and its purpose admits it. `internal-ca` signs through it, and so
   does the runtime's export the surfaces call (`xmip_operate.h` section 19),
-  since the runtime may link no technology.
+  since the runtime may link no technology. `Issuer::kept_or_made` keeps an
+  authority in a folder and makes one there where none is kept — the
+  certificate first, the key last and never over one, both private files —
+  for `internal-ca` and `host` alike (moved here from `internal-ca`
+  2026-10-21).
+- **`host`** — a web host's own certificate on this machine (ADR-0009,
+  amendment 2026-10-21): `issue_into` keeps or makes the authority in a
+  folder and issues the host a fresh key and a certificate for server
+  authentication alone, its subject and only alternative name the name a
+  browser reaches it by, written as `host.key` and `host.pem`, private files
+  in place of what was there; the same authority signs the tester's
+  operator request. The runtime reaches it through `xmip_operate.h` section
+  21. `AUTHORITY_LIFETIME`, a year, and `HOST_LIFETIME`, thirty days, are
+  the assistant's draft of 2026-10-21, for the owner to strike.
+- **Alternative names** — a name that is an IP address is written as an
+  `iPAddress`, its four or sixteen octets (RFC 5280 section 4.2.1.6), every
+  other name as a `dNSName`: a browser checks `https://127.0.0.1` against
+  the first and never the second.
 - **`Provisioner`** — one purpose's certificate kept in its place, read back
   after a restart, and obtained again at two thirds of the life it was
   issued with, read from the certificate itself: no lifetime is assumed
