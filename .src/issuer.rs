@@ -7,7 +7,9 @@ use std::path::Path;
 
 use secret::private_file;
 
-use crate::der::subject_of;
+use crate::crl::Reason;
+use crate::parsed::Parsed;
+use crate::register::{Record, Register};
 use crate::{Draft, KeyPair, ProvisionError, Purpose, Result, Usage, csr, pem};
 
 /// The file an authority's key is kept in, inside its place.
@@ -21,6 +23,12 @@ pub struct Issuer {
     name: Vec<u8>,
     key: KeyPair,
     certificate: String,
+    /// Its register, where it is kept in a folder: every certificate it
+    /// signs is recorded there.
+    register: Option<Register>,
+    /// The address it publishes its list and certificate at, which a leaf
+    /// it signs names.
+    published: Option<String>,
 }
 
 impl core::fmt::Debug for Issuer {
@@ -42,9 +50,11 @@ impl Issuer {
             .first()
             .ok_or_else(|| ProvisionError::new("the authority's PEM holds no CERTIFICATE"))?;
         Ok(Self {
-            name: subject_of(first)?,
+            name: Parsed::read(first)?.subject,
             key,
             certificate,
+            register: None,
+            published: None,
         })
     }
 
@@ -65,7 +75,11 @@ impl Issuer {
             })
         };
         let key = zeroize::Zeroizing::new(read(KEY)?);
-        Self::new(read(CERTIFICATE)?, KeyPair::from_pem(&key)?)
+        let mut kept = Self::new(read(CERTIFICATE)?, KeyPair::from_pem(&key)?)?;
+        let register = Register::at(place);
+        kept.published = register.published()?;
+        kept.register = Some(register);
+        Ok(kept)
     }
 
     /// A new authority called `name`, a fresh key and its certificate
@@ -122,7 +136,7 @@ impl Issuer {
         let key = place.join(KEY);
         private_file::create(&key, made.key.pem().as_bytes())
             .map_err(|failure| failed(&key, failure))?;
-        Ok(made)
+        Self::kept(place)
     }
 
     /// Its certificate, PEM: the anchor what it signs reaches.
@@ -135,6 +149,42 @@ impl Issuer {
     #[must_use]
     pub const fn key(&self) -> &KeyPair {
         &self.key
+    }
+
+    /// Its register, where it is kept in a folder.
+    #[must_use]
+    pub const fn register(&self) -> Option<&Register> {
+        self.register.as_ref()
+    }
+
+    /// The register of an authority kept in a folder, or a refusal saying
+    /// it is held in memory alone.
+    fn kept_register(&self) -> Result<&Register> {
+        self.register
+            .as_ref()
+            .ok_or_else(|| ProvisionError::new("an authority held in memory keeps no register"))
+    }
+
+    /// Revoke the certificate it signed whose serial is `serial` for
+    /// `reason` at `now`, its list made again at once
+    /// (`Register::revoke`).
+    ///
+    /// # Errors
+    ///
+    /// Where it keeps no register, signed no such certificate, or revoked
+    /// it already; each in words.
+    pub fn revoke(&self, serial: &str, reason: Reason, now: i64) -> Result<Record> {
+        self.kept_register()?
+            .revoke((&self.name, &self.key), serial, reason, now)
+    }
+
+    /// The revocation list it publishes now, DER (`Register::list`).
+    ///
+    /// # Errors
+    ///
+    /// Where it keeps no register, or the list cannot be made.
+    pub fn revocation_list(&self, now: i64) -> Result<Vec<u8>> {
+        self.kept_register()?.list((&self.name, &self.key), now)
     }
 
     /// A certificate for `public_key_info`, `subject` its common name and
@@ -161,7 +211,10 @@ impl Issuer {
             not_after,
             usage: Usage::Leaf(purpose),
         }
-        .sign_under(&self.name, &self.key)?;
+        .sign_published(&self.name, &self.key, self.published.as_deref())?;
+        if let Some(register) = &self.register {
+            register.record(&der)?;
+        }
         Ok(format!(
             "{}{}",
             pem::encode("CERTIFICATE", &der),
@@ -255,7 +308,7 @@ mod tests {
         assert!(!crate::serves(&leaf, Purpose::Receive).expect("read"));
         assert!(!crate::serves(&leaf, Purpose::Node).expect("read"));
         assert_eq!(
-            read_name(&subject_of(&leaf).expect("subject")).expect("name"),
+            read_name(&Parsed::read(&leaf).expect("read").subject).expect("name"),
             [(COMMON_NAME.to_vec(), "alice@example.org".to_string())]
         );
         let alternative = oid(SUBJECT_ALT_NAME);

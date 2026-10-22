@@ -4,15 +4,28 @@
 //! Version 3, a random serial, ECDSA with SHA-256, one common name, and the
 //! extensions a TLS verifier reads: an authority is a CA that signs
 //! certificates; a leaf is not, signs handshakes, and names its purpose's
-//! extended key usages and its DNS names.
+//! extended key usages and its DNS names. Every certificate names its own
+//! key and a leaf its issuer's (key identifiers), which a verifier builds a
+//! chain by and ACME Renewal Information names a certificate by (RFC 9773
+//! section 4.1); a leaf of an authority that publishes says where its
+//! revocation list and the authority's certificate are fetched from.
 
-use asn1::{INTEGER, tlv};
+use asn1::{INTEGER, OCTET_STRING, tlv};
 
 use crate::der::{
-    BASIC_CONSTRAINTS, EXT_KEY_USAGE, KEY_USAGE, SUBJECT_ALT_NAME, alternative_names, ecdsa_sha256,
-    extension, name, oid, sequence, time,
+    AUTHORITY_INFORMATION_ACCESS, AUTHORITY_KEY_IDENTIFIER, BASIC_CONSTRAINTS, CA_ISSUERS,
+    CRL_DISTRIBUTION_POINTS, EXT_KEY_USAGE, KEY_USAGE, SUBJECT_ALT_NAME, SUBJECT_KEY_IDENTIFIER,
+    alternative_names, ecdsa_sha256, extension, key_identifier, name, oid, sequence, time,
 };
 use crate::{KeyPair, ProvisionError, Purpose, Result};
+
+/// Where, beneath the address an authority publishes at, its revocation
+/// list is fetched: DER, `application/pkix-crl` (RFC 5280 section 4.2.1.13).
+pub const CRL_PATH: &str = "/crl";
+
+/// Where, beneath it, its certificate is fetched: DER,
+/// `application/pkix-cert` (RFC 5280 section 4.2.2.1).
+pub const AUTHORITY_PATH: &str = "/authority.cer";
 
 /// The key usage of an authority: `keyCertSign` and `cRLSign`, seven bits,
 /// one unused.
@@ -65,13 +78,32 @@ impl Draft<'_> {
     ///
     /// As [`Draft::sign`].
     pub fn sign_under(&self, issuer: &[u8], issuer_key: &KeyPair) -> Result<Vec<u8>> {
+        self.sign_published(issuer, issuer_key, None)
+    }
+
+    /// As [`Draft::sign_under`], by an authority that publishes at
+    /// `published` — `http://host:port`, plain HTTP, since a verifier
+    /// fetches a revocation list before it trusts any TLS — where it is
+    /// given: a leaf then names `<published>/crl` its distribution point
+    /// and `<published>/authority.cer` its issuer's certificate.
+    ///
+    /// # Errors
+    ///
+    /// As [`Draft::sign`].
+    pub fn sign_published(
+        &self,
+        issuer: &[u8],
+        issuer_key: &KeyPair,
+        published: Option<&str>,
+    ) -> Result<Vec<u8>> {
         if self.not_after <= self.not_before {
             return Err(ProvisionError::new(
                 "a certificate must end after it starts",
             ));
         }
         let validity = sequence(&[&time(self.not_before)?, &time(self.not_after)?]);
-        let extensions = tlv(asn1::context(3, true), &sequence(&[&self.extensions()]));
+        let written = self.extensions(&issuer_key.public_key_info(), published)?;
+        let extensions = tlv(asn1::context(3, true), &sequence(&[&written]));
         let tbs = sequence(&[
             &tlv(asn1::context(0, true), &tlv(INTEGER, &[2])),
             &tlv(INTEGER, &serial()),
@@ -91,15 +123,14 @@ impl Draft<'_> {
     }
 
     /// The extensions, in one piece.
-    fn extensions(&self) -> Vec<u8> {
+    fn extensions(&self, issuer_key: &[u8], published: Option<&str>) -> Result<Vec<u8>> {
+        let own = tlv(OCTET_STRING, &key_identifier(self.public_key_info)?);
+        let mut written = extension(SUBJECT_KEY_IDENTIFIER, false, &own);
         match self.usage {
             Usage::Authority => {
                 let constraints = sequence(&[&tlv(asn1::BOOLEAN, &[0xff])]);
-                [
-                    extension(BASIC_CONSTRAINTS, true, &constraints),
-                    extension(KEY_USAGE, true, &AUTHORITY_USAGE),
-                ]
-                .concat()
+                written.extend(extension(BASIC_CONSTRAINTS, true, &constraints));
+                written.extend(extension(KEY_USAGE, true, &AUTHORITY_USAGE));
             }
             Usage::Leaf(purpose) => {
                 let usages: Vec<u8> = purpose
@@ -107,12 +138,15 @@ impl Draft<'_> {
                     .into_iter()
                     .flat_map(oid)
                     .collect();
-                let mut written = [
-                    extension(BASIC_CONSTRAINTS, true, &sequence(&[])),
-                    extension(KEY_USAGE, true, &LEAF_USAGE),
-                    extension(EXT_KEY_USAGE, false, &sequence(&[&usages])),
-                ]
-                .concat();
+                let issuer = tlv(asn1::context(0, false), &key_identifier(issuer_key)?);
+                written.extend(extension(
+                    AUTHORITY_KEY_IDENTIFIER,
+                    false,
+                    &sequence(&[&issuer]),
+                ));
+                written.extend(extension(BASIC_CONSTRAINTS, true, &sequence(&[])));
+                written.extend(extension(KEY_USAGE, true, &LEAF_USAGE));
+                written.extend(extension(EXT_KEY_USAGE, false, &sequence(&[&usages])));
                 // A person's certificate names no host.
                 if !self.names.is_empty() {
                     written.extend(extension(
@@ -121,10 +155,28 @@ impl Draft<'_> {
                         &alternative_names(self.names),
                     ));
                 }
-                written
+                if let Some(base) = published {
+                    written.extend(publication(base.trim_end_matches('/')));
+                }
             }
         }
+        Ok(written)
     }
+}
+
+/// Where a leaf's authority publishes: its revocation list as the one
+/// distribution point (RFC 5280 section 4.2.1.13) and its certificate as
+/// the issuer's (section 4.2.2.1), each a URI.
+fn publication(base: &str) -> Vec<u8> {
+    let uri = |path: &str| tlv(asn1::context(6, false), format!("{base}{path}").as_bytes());
+    let full_name = tlv(asn1::context(0, true), &uri(CRL_PATH));
+    let point = sequence(&[&tlv(asn1::context(0, true), &full_name)]);
+    let issuers = sequence(&[&oid(CA_ISSUERS), &uri(AUTHORITY_PATH)]);
+    [
+        extension(CRL_DISTRIBUTION_POINTS, false, &sequence(&[&point])),
+        extension(AUTHORITY_INFORMATION_ACCESS, false, &sequence(&[&issuers])),
+    ]
+    .concat()
 }
 
 /// Sixteen random bytes, positive and with no leading zero, as RFC 5280

@@ -138,6 +138,14 @@ pub fn verify_fixed(point: &[u8], message: &[u8], signature: &[u8]) -> bool {
         .is_ok()
 }
 
+/// The SHA-256 fingerprint of a certificate's `der`, hexadecimal and
+/// uppercase, as an operator compares an anchor by another way before
+/// trusting it.
+#[must_use]
+pub fn fingerprint(der: &[u8]) -> String {
+    codec::hex::encode(&sha256(der)).to_ascii_uppercase()
+}
+
 /// SHA-256 of `bytes`: a JWK thumbprint, a dns-01 record's value.
 #[must_use]
 pub fn sha256(bytes: &[u8]) -> [u8; 32] {

@@ -21,8 +21,8 @@ use crate::host::{AUTHORITY_LIFETIME, Fresh, Issued, seconds};
 use crate::issuer::CERTIFICATE;
 use crate::{Issuer, ProvisionError, Purpose, Result};
 
-/// How long a node's certificate is valid: ninety days. The assistant's
-/// draft of 2026-10-21, for the owner to strike.
+/// How long a node's certificate is valid: ninety days, the owner's,
+/// 2026-10-22 (ADR-0034, amendment 2026-10-22).
 pub const NODE_LIFETIME: Duration = Duration::from_hours(90 * 24);
 
 /// The file a node's certificate chain is written to, leaf first.
@@ -59,16 +59,7 @@ pub fn issue_into(
         ));
     }
     let authorized = Issuer::kept_or_made(authority, name, now, seconds(AUTHORITY_LIFETIME))?;
-    let mut every = vec![node.to_string()];
-    for one in names
-        .iter()
-        .map(|one| one.trim())
-        .filter(|one| !one.is_empty())
-    {
-        if !every.iter().any(|held| held == one) {
-            every.push(one.to_string());
-        }
-    }
+    let every = reached_by(node, names);
     std::fs::create_dir_all(folder)
         .map_err(|failure| ProvisionError::new(format!("{}: {failure}", folder.display())))?;
     let written = Issued {
@@ -90,6 +81,22 @@ pub fn issue_into(
         ProvisionError::new(format!("writing {}: {failure}", written.anchor.display()))
     })?;
     Ok(written)
+}
+
+/// Every name a node is reached by: its own first, then each of `names`
+/// once, trimmed, an empty one passed over.
+pub(crate) fn reached_by(node: &str, names: &[String]) -> Vec<String> {
+    let mut every = vec![node.trim().to_string()];
+    for one in names
+        .iter()
+        .map(|one| one.trim())
+        .filter(|one| !one.is_empty())
+    {
+        if !every.iter().any(|held| held.eq_ignore_ascii_case(one)) {
+            every.push(one.to_string());
+        }
+    }
+    every
 }
 
 #[cfg(test)]

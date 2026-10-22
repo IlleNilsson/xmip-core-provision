@@ -58,8 +58,43 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   certificate, private files in place of what was there — the files a
   node's `[operate]` names. The same fresh key and issuing as `host`'s
   (`host::Fresh`). The runtime reaches it through `xmip_operate.h` section
-  22. `NODE_LIFETIME`, ninety days, is the assistant's draft of 2026-10-21,
-  for the owner to strike.
+  22. `NODE_LIFETIME`, ninety days, is the owner's (2026-10-22).
+- **`register`** — the register of an authority kept in a folder (ADR-0034,
+  amendment 2026-10-22): every certificate it signs, by any of the ways
+  above or by ACME, kept as `issued/<serial>.pem`, each revocation as
+  `revoked/<serial>`, and the revocation list it publishes,
+  `authority.crl`, made again at every revocation and when a day old,
+  valid a week; the plain-HTTP address it publishes at, `published`,
+  which every leaf it signs from then names as its CRL distribution point
+  (`/crl`) and its issuer's certificate (`/authority.cer`); and its backup,
+  the whole folder copied into an empty one, each file private. An
+  `Issuer` kept in a folder records what it signs there itself.
+- **`crl`** — a version 2 revocation list (RFC 5280 section 5) written,
+  signed and read back, its `Reason`s by RFC 5280's words. No OCSP: Let's
+  Encrypt has published revocation as lists alone since 2025-08-06.
+- **`renewal`** — when a certificate is renewed, said once: its
+  `Standing` — current, renewal due, expired — the window ACME Renewal
+  Information suggests (RFC 9773), from two thirds to three quarters of
+  its life, and a certificate's renewal information identifier, its
+  authority key identifier and serial. `renewal_moment`, two thirds of the
+  life, is the one moment every reader renews at.
+- **`carried`** — a node's certificate across an air gap: `request_into`
+  writes a fresh key, `node.next.key`, which stays on the node, and a
+  request, `node.csr`; `sign` verifies a carried request, holds it to a
+  node's purpose and the names expected, and signs it for ninety days by
+  an authority that exists; `import` checks the chain — every signature,
+  the leaf for the request's key and names, valid now, reaching the
+  node's anchors — before `node.pem`, `node.key` and, where the node held
+  none, `anchors.pem` are written.
+- **`Parsed`** — a certificate read once: its serial, names, validity,
+  key, extensions and the signature over it, which every reader above
+  reads from. Every certificate here names its own key and a leaf its
+  issuer's (key identifiers, RFC 7093 method 1).
+- **A node's certificate always comes from the cluster's authority**:
+  `[provision.node]` from a source that trusts the operating system's
+  store — a public authority — is refused; its `anchors` must name the
+  cluster authority's anchor. Let's Encrypt serves `[provision.receive]`,
+  the public server side, alone (the owner, 2026-10-22).
 - **Alternative names** — a name that is an IP address is written as an
   `iPAddress`, its four or sixteen octets (RFC 5280 section 4.2.1.6), every
   other name as a `dNSName`: a browser checks `https://127.0.0.1` against
@@ -101,8 +136,10 @@ Mounted beside `.src` (ADR-0049):
 ## What it is not
 
 Not usage: presenting and verifying a certificate is
-`xmip-core-library-tls`. Not yet read by `xmip-service`, which starts no
-provisioner (open problem 27). A provisioned key is a private PEM file in the
+`xmip-core-library-tls`. Not a provisioner in `xmip-service`, which starts
+none for its own certificates (open problem 27); it serves the cluster's
+authority over ACME where `[provision.node]` says so (`internal-ca`). Not an
+OCSP responder. A provisioned key is a private PEM file in the
 purpose's place, readable by the Service Identity alone, not sealed under the
 key home's key-encryption key (ADR-0063 clause 4).
 
@@ -114,5 +151,10 @@ Unix, the access list on Windows); a crash after a new generation is written
 and before the switch, or halfway through writing one, leaves the old chain
 with the old key, and the next write sweeps both; a `current` naming no
 generation is refused; an operator's key and request are written private and
-never over a file. Run on Windows and on Linux. The workflow is manual-only
-and calls the versioned shared workflow at `IlleNilsson/.github@v1`.
+never over a file; `tests/authority.rs`: what a kept authority signs is
+registered and names where its list is, a revocation is listed at once,
+signed by the authority and never twice, a backup is the same authority,
+and a node's certificate carried across an air gap is requested, signed
+and imported, each refusal said in words. Run on Windows and on Linux.
+The workflow is manual-only and calls the versioned shared workflow at
+`IlleNilsson/.github@v1`.
