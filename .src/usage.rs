@@ -5,6 +5,7 @@
 use asn1::SEQUENCE;
 
 use crate::der::EXT_KEY_USAGE;
+use crate::parsed::Parsed;
 use crate::{Purpose, Result};
 
 /// Whether the certificate `der` serves `purpose`: it names every usage the
@@ -17,7 +18,16 @@ use crate::{Purpose, Result};
 ///
 /// Where `der` is not a certificate.
 pub fn serves(der: &[u8], purpose: Purpose) -> Result<bool> {
-    Ok(extended_key_usages(der)?.is_none_or(|usages| {
+    serves_read(&Parsed::read(der)?, purpose)
+}
+
+/// As [`serves`], of a certificate already read.
+///
+/// # Errors
+///
+/// Where its extended key usage does not read.
+pub fn serves_read(read: &Parsed, purpose: Purpose) -> Result<bool> {
+    Ok(extended_key_usages(read)?.is_none_or(|usages| {
         purpose
             .extended_key_usages()
             .into_iter()
@@ -25,34 +35,17 @@ pub fn serves(der: &[u8], purpose: Purpose) -> Result<bool> {
     }))
 }
 
-/// The extended key usages `der` names, or `None` where it names none.
-fn extended_key_usages(der: &[u8]) -> Result<Option<Vec<Vec<u32>>>> {
-    let (certificate, _) = asn1::expect(der, SEQUENCE)?;
-    let (tbs, _) = asn1::expect(certificate, SEQUENCE)?;
-    for (tag, contents) in asn1::read_all(tbs)? {
-        if tag != asn1::context(3, true) {
-            continue;
-        }
-        let (extensions, _) = asn1::expect(contents, SEQUENCE)?;
-        for (_, extension) in asn1::read_all(extensions)? {
-            let (id, rest) = asn1::expect(extension, asn1::OBJECT_IDENTIFIER)?;
-            if asn1::read_object_identifier(id)? != EXT_KEY_USAGE {
-                continue;
-            }
-            let rest = match asn1::read(rest)? {
-                (asn1::BOOLEAN, _, after) => after,
-                _ => rest,
-            };
-            let (value, _) = asn1::expect(rest, asn1::OCTET_STRING)?;
-            let (usages, _) = asn1::expect(value, SEQUENCE)?;
-            return asn1::read_all(usages)?
-                .into_iter()
-                .map(|(_, usage)| asn1::read_object_identifier(usage).map_err(Into::into))
-                .collect::<Result<Vec<_>>>()
-                .map(Some);
-        }
-    }
-    Ok(None)
+/// The extended key usages `read` names, or `None` where it names none.
+fn extended_key_usages(read: &Parsed) -> Result<Option<Vec<Vec<u32>>>> {
+    let Some(value) = read.extension(EXT_KEY_USAGE) else {
+        return Ok(None);
+    };
+    let (usages, _) = asn1::expect(value, SEQUENCE)?;
+    asn1::read_all(usages)?
+        .into_iter()
+        .map(|(_, usage)| asn1::read_object_identifier(usage).map_err(Into::into))
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
 }
 
 #[cfg(test)]

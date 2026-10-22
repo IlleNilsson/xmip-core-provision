@@ -52,9 +52,23 @@
 //! server and client authentication, for every name it is reached by, into
 //! a folder holding its anchors too: what an environment template gives a
 //! node machine (ADR-0015, amendment 2026-10-21).
+//!
+//! **The authority kept in a folder keeps a register** ([`register`]): every
+//! certificate it signs, by any of these ways, which it revoked and why,
+//! and the revocation list it publishes ([`crl`]) at the plain-HTTP address
+//! its leaves name, so an operator inspects, revokes and backs up one
+//! authority from every surface (ADR-0034, amendment 2026-10-22). When a
+//! certificate is renewed is said once ([`renewal`]): a node's health, the
+//! register and ACME Renewal Information (RFC 9773) read the same moment.
+//!
+//! **Across an air gap** ([`carried`]): a node writes its request to a
+//! file, the authority signs it where it is kept, and the node imports the
+//! chain, each step checking the file it is given.
 
+pub mod carried;
 mod certificate;
 mod configuration;
+pub mod crl;
 pub mod csr;
 mod der;
 mod error;
@@ -64,28 +78,33 @@ pub mod issuer;
 mod key;
 pub mod node;
 pub mod operator;
+mod parsed;
 pub mod pem;
 mod provisioned;
 mod provisioner;
 mod purpose;
+pub mod register;
+pub mod renewal;
 mod source;
 mod usage;
 mod validity;
 
-pub use certificate::{Draft, Usage};
+pub use certificate::{AUTHORITY_PATH, CRL_PATH, Draft, Usage};
 pub use configuration::{
     Configured, FILES, NAMES, OPERATOR, OPERATOR_LIFETIME, SOURCE, names, read,
 };
+pub use der::{key_identifier, point_of};
 pub use error::ProvisionError;
 pub use files::Files;
 pub use issuer::Issuer;
-pub use key::{KeyPair, sha256, verify, verify_fixed};
+pub use key::{KeyPair, fingerprint, sha256, verify, verify_fixed};
+pub use parsed::Parsed;
 pub use provisioned::Provisioned;
 pub use provisioner::Provisioner;
 pub use purpose::Purpose;
 pub use source::{Order, Source};
-pub use usage::serves;
-pub use validity::validity;
+pub use usage::{serves, serves_read};
+pub use validity::{renewal_moment, validity};
 
 /// The result of provisioning.
 pub type Result<T> = core::result::Result<T, ProvisionError>;

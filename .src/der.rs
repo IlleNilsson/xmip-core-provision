@@ -38,6 +38,20 @@ pub const SERVER_AUTH: &[u32] = &[1, 3, 6, 1, 5, 5, 7, 3, 1];
 pub const CLIENT_AUTH: &[u32] = &[1, 3, 6, 1, 5, 5, 7, 3, 2];
 /// pkcs-9-at-extensionRequest (RFC 2985).
 pub const EXTENSION_REQUEST: &[u32] = &[1, 2, 840, 113_549, 1, 9, 14];
+/// id-ce-subjectKeyIdentifier.
+pub const SUBJECT_KEY_IDENTIFIER: &[u32] = &[2, 5, 29, 14];
+/// id-ce-authorityKeyIdentifier.
+pub const AUTHORITY_KEY_IDENTIFIER: &[u32] = &[2, 5, 29, 35];
+/// id-ce-cRLDistributionPoints.
+pub const CRL_DISTRIBUTION_POINTS: &[u32] = &[2, 5, 29, 31];
+/// id-ce-cRLNumber.
+pub const CRL_NUMBER: &[u32] = &[2, 5, 29, 20];
+/// id-ce-cRLReasons.
+pub const CRL_REASON: &[u32] = &[2, 5, 29, 21];
+/// id-pe-authorityInfoAccess.
+pub const AUTHORITY_INFORMATION_ACCESS: &[u32] = &[1, 3, 6, 1, 5, 5, 7, 1, 1];
+/// id-ad-caIssuers.
+pub const CA_ISSUERS: &[u32] = &[1, 3, 6, 1, 5, 5, 7, 48, 2];
 
 /// An `OBJECT IDENTIFIER`, whole.
 #[must_use]
@@ -80,6 +94,18 @@ pub fn name(common_name: &str) -> Vec<u8> {
 pub fn public_key_info(point: &[u8]) -> Vec<u8> {
     let algorithm = sequence(&[&oid(EC_PUBLIC_KEY), &oid(P256)]);
     sequence(&[&algorithm, &bit_string(point)])
+}
+
+/// The identifier of the key `info` holds, as a subject key identifier
+/// names a key and an authority key identifier names its issuer's: the
+/// leftmost 160 bits of SHA-256 over the key's bits (RFC 7093 section 2,
+/// method 1), where SHA-1 was RFC 5280's.
+///
+/// # Errors
+///
+/// Where `info` is not a P-256 key.
+pub fn key_identifier(info: &[u8]) -> Result<Vec<u8>> {
+    Ok(crate::sha256(&point_of(info)?)[..20].to_vec())
 }
 
 /// The P-256 point a `SubjectPublicKeyInfo` holds.
@@ -153,30 +179,6 @@ pub fn read_name(name: &[u8]) -> Result<Vec<(Vec<u32>, String)>> {
         }
     }
     Ok(attributes)
-}
-
-/// The subject of the certificate `der`, its `Name` whole, as an issuer
-/// names itself in what it signs.
-///
-/// # Errors
-///
-/// Where `der` is not a certificate.
-pub fn subject_of(der: &[u8]) -> Result<Vec<u8>> {
-    let (certificate, _) = asn1::expect(der, SEQUENCE)?;
-    let (tbs, _) = asn1::expect(certificate, SEQUENCE)?;
-    let mut rest = tbs;
-    if let (tag, _, after) = asn1::read(rest)?
-        && tag == asn1::context(0, true)
-    {
-        rest = after;
-    }
-    // The serial, the signature algorithm, the issuer and the validity come
-    // before the subject.
-    for _ in 0..4 {
-        rest = asn1::read(rest)?.2;
-    }
-    let (_, _, after) = asn1::read(rest)?;
-    Ok(rest[..rest.len() - after.len()].to_vec())
 }
 
 /// One extension: its identifier, critical or not, and its value's DER.

@@ -76,7 +76,7 @@ impl Provisioned {
     /// issued with, whatever that life is.
     #[must_use]
     pub const fn renew_at(&self) -> i64 {
-        self.not_before + (self.not_after - self.not_before) / 3 * 2
+        crate::renewal_moment(self.not_before, self.not_after)
     }
 
     /// Whether it is due for renewal at `now`.

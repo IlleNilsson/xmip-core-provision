@@ -166,7 +166,9 @@ pub fn read(
     let settings = declaration.map(|declaration| declaration.read(Applies::Both, &rest));
     match (named, declaration, settings) {
         (Some(purpose), Some(declaration), Some(Ok(settings))) if refusals.is_empty() => {
-            match empty_names(declaration, &settings) {
+            match empty_names(declaration, &settings)
+                .or_else(|| public_for_node(purpose, declaration, &settings))
+            {
                 Some(refusal) => Err(Refused(vec![refusal])),
                 None => Ok(Configured {
                     purpose,
@@ -211,6 +213,29 @@ fn not_linked(name: &str, sources: &[&'static Settings]) -> Refusal {
             }
         ),
     }
+}
+
+/// The setting a source names the anchors it trusts by.
+const ANCHORS: &str = "anchors";
+
+/// A node's certificate from a source that trusts the operating system's
+/// store: a public authority. Between nodes each end presents a
+/// certificate for client authentication too, which Let's Encrypt has not
+/// issued since 2026-07-08, so a node's certificate always comes from the
+/// cluster's authority, its anchor named, and a public authority serves
+/// `[provision.receive]` alone (the owner, 2026-10-22; ADR-0034, amendment
+/// 2026-10-22).
+fn public_for_node(purpose: Purpose, declaration: &Settings, settings: &Read) -> Option<Refusal> {
+    (purpose == Purpose::Node
+        && declaration.setting(ANCHORS).is_some()
+        && settings.optional_text(ANCHORS).is_none())
+    .then(|| Refusal::Kind {
+        technology: declaration.technology,
+        setting: ANCHORS,
+        expected: "the cluster authority's anchor",
+        reason: "a node's certificate comes from the cluster's authority, which `anchors` \n                 names; a public authority such as Let's Encrypt issues server \n                 authentication alone since 2026-07-08 and serves [provision.receive] only"
+            .to_string(),
+    })
 }
 
 /// A `names` that lists nothing, where the declaration takes names.
@@ -302,6 +327,36 @@ mod tests {
             refused.expect_err("missing").0[0]
                 .to_string()
                 .contains("missing")
+        );
+    }
+
+    #[test]
+    fn a_nodes_certificate_from_a_source_trusting_the_systems_store_is_refused() {
+        const PUBLIC: &Settings = &Settings {
+            technology: "xmip-core-provision-example",
+            settings: &[
+                NAMES,
+                Setting {
+                    name: ANCHORS,
+                    kind: Kind::Address,
+                    presence: Presence::Optional,
+                    meaning: "The anchors.",
+                    applies: Applies::Both,
+                },
+            ],
+        };
+        let public = [text(SOURCE, PUBLIC.technology), text("names", "r1.example")];
+        let refused = read("node", &public, &[PUBLIC]).expect_err("a public authority");
+        assert!(refused.0[0].to_string().contains("cluster"), "{refused:?}");
+        assert!(
+            read("receive", &public, &[PUBLIC]).is_ok(),
+            "the public server side"
+        );
+        let mut anchored = public.to_vec();
+        anchored.push(text(ANCHORS, "anchor.pem"));
+        assert!(
+            read("node", &anchored, &[PUBLIC]).is_ok(),
+            "the cluster's anchor"
         );
     }
 }
