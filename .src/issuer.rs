@@ -3,6 +3,7 @@
 //! so the cluster's authority (`internal-ca`) and every surface that signs a
 //! person's request (ADR-0034, amendment 2026-10-15) sign the same way.
 
+use std::io::ErrorKind;
 use std::path::Path;
 
 use secret::private_file;
@@ -90,52 +91,39 @@ impl Issuer {
     /// Where a key cannot be made or the certificate signed.
     pub fn made(name: &str, now: i64, lifetime: i64) -> Result<Self> {
         let key = KeyPair::generate()?;
-        let der = Draft {
-            subject: name,
-            names: &[],
-            public_key_info: &key.public_key_info(),
-            not_before: now,
-            not_after: now.saturating_add(lifetime),
-            usage: Usage::Authority,
-        }
-        .sign(name, &key)?;
-        Self::new(pem::encode("CERTIFICATE", &der), key)
+        Self::new(self_signed(name, &key, now, lifetime)?, key)
     }
 
-    /// The authority kept in `place`, or a new one called `name` made
-    /// ([`Issuer::made`]) and kept there where it keeps none: the cluster's
-    /// own (`internal-ca`) and a web host's on this machine (`host`) alike.
+    /// The authority kept in `place`, or a new one called `name` made and
+    /// kept there where it keeps none: the cluster's own (`internal-ca`) and
+    /// a web host's on this machine (`host`) alike.
     ///
     /// Both files are private files (`secret::private_file`) in a private
-    /// directory. The certificate is written first, in place of any a crash
-    /// left, and the key last and never over one: the key is what says an
-    /// authority is kept, so a crash between the two leaves none kept and the
-    /// next start makes a new pair, never a certificate beside another's key.
-    /// What a crash left between writing a file and naming it is swept first
-    /// (`private_file::sweep`).
+    /// directory, and several makers may race for one place: two clusters'
+    /// first runs, or a run and a web host starting together. The key is
+    /// written first and never over one, so exactly one maker's key is kept
+    /// and every other reads it. Then whoever holds that key makes sure the
+    /// certificate beside it is for it: one that is, is kept; none is signed
+    /// from the key and written never over one, a maker that lost that write
+    /// reading the winner's; one for another key, which a crash under the
+    /// earlier order left, is replaced. Nobody waits for anybody, since every
+    /// maker can sign for the kept key. What every maker returns is read
+    /// back from the place, never its own in memory, so all of them hold the
+    /// same pair. What a crash left between writing a file and naming it is
+    /// swept first (`private_file::sweep`); a write another maker's sweep
+    /// took is tried again.
     ///
     /// # Errors
     ///
     /// Where the files cannot be read or written, or do not hold an
     /// authority.
     pub fn kept_or_made(place: &Path, name: &str, now: i64, lifetime: i64) -> Result<Self> {
-        let failed = |path: &Path, failure: std::io::Error| {
-            ProvisionError::new(format!("{}: {failure}", path.display()))
-        };
         private_file::sweep(place).map_err(|failure| {
             ProvisionError::new(format!("sweeping {}: {failure}", place.display()))
         })?;
-        if place.join(KEY).exists() {
-            return Self::kept(place);
-        }
-        let made = Self::made(name, now, lifetime)?;
-        private_file::directory(place).map_err(|failure| failed(place, failure))?;
-        let certificate = place.join(CERTIFICATE);
-        private_file::replace(&certificate, made.certificate.as_bytes())
-            .map_err(|failure| failed(&certificate, failure))?;
-        let key = place.join(KEY);
-        private_file::create(&key, made.key.pem().as_bytes())
-            .map_err(|failure| failed(&key, failure))?;
+        private_file::directory(place).map_err(|failure| failed(place, &failure))?;
+        let key = key_kept(place)?;
+        certificate_kept(place, name, &key, (now, lifetime))?;
         Self::kept(place)
     }
 
@@ -255,6 +243,101 @@ impl Issuer {
             not_after,
         )
     }
+}
+
+/// How many times a maker writes a file of the place again, where another
+/// maker's sweep took the write or another's file landed first.
+const TRIES: usize = 5;
+
+/// `failure` at `path`, in words.
+fn failed(path: &Path, failure: &std::io::Error) -> ProvisionError {
+    ProvisionError::new(format!("{}: {failure}", path.display()))
+}
+
+/// The certificate of an authority called `name` whose key is `key`,
+/// signed by itself, valid from `now` for `lifetime` seconds; PEM.
+fn self_signed(name: &str, key: &KeyPair, now: i64, lifetime: i64) -> Result<String> {
+    let der = Draft {
+        subject: name,
+        names: &[],
+        public_key_info: &key.public_key_info(),
+        not_before: now,
+        not_after: now.saturating_add(lifetime),
+        usage: Usage::Authority,
+    }
+    .sign(name, key)?;
+    Ok(pem::encode("CERTIFICATE", &der))
+}
+
+/// The key kept in `place`: read where one is, else a fresh one written
+/// never over one, and read where another maker's landed first.
+fn key_kept(place: &Path) -> Result<KeyPair> {
+    let path = place.join(KEY);
+    let mut last = None;
+    for _ in 0..TRIES {
+        match std::fs::read_to_string(&path) {
+            Ok(text) => return KeyPair::from_pem(&zeroize::Zeroizing::new(text)),
+            Err(failure) if failure.kind() != ErrorKind::NotFound => {
+                return Err(failed(&path, &failure));
+            }
+            Err(_) => {}
+        }
+        let fresh = KeyPair::generate()?;
+        match private_file::create(&path, fresh.pem().as_bytes()) {
+            Ok(()) => return Ok(fresh),
+            Err(failure) => last = Some(failure),
+        }
+    }
+    Err(last.map_or_else(
+        || ProvisionError::new(format!("{}: not kept", path.display())),
+        |failure| failed(&path, &failure),
+    ))
+}
+
+/// The certificate kept in `place` made one for `key`: kept where it is,
+/// signed as `name` and written never over one where none is, and written
+/// in place of one for another key.
+fn certificate_kept(
+    place: &Path,
+    name: &str,
+    key: &KeyPair,
+    (now, lifetime): (i64, i64),
+) -> Result<()> {
+    let path = place.join(CERTIFICATE);
+    let public = key.public_key_info();
+    let mut last = None;
+    for _ in 0..TRIES {
+        let other = match std::fs::read_to_string(&path) {
+            Ok(text) if for_key(&text, &public) => return Ok(()),
+            Ok(_) => true,
+            Err(failure) if failure.kind() == ErrorKind::NotFound => false,
+            Err(failure) => return Err(failed(&path, &failure)),
+        };
+        let signed = self_signed(name, key, now, lifetime)?;
+        let written = if other {
+            private_file::replace(&path, signed.as_bytes())
+        } else {
+            private_file::create(&path, signed.as_bytes())
+        };
+        match written {
+            Ok(()) => return Ok(()),
+            Err(failure) => last = Some(failure),
+        }
+    }
+    Err(last.map_or_else(
+        || ProvisionError::new(format!("{}: not kept", path.display())),
+        |failure| failed(&path, &failure),
+    ))
+}
+
+/// Whether the first certificate of `text`, PEM, is for the key whose
+/// public key information is `public`; one that does not read is not.
+fn for_key(text: &str, public: &[u8]) -> bool {
+    pem::decode("CERTIFICATE", text)
+        .ok()
+        .and_then(|blocks| blocks.into_iter().next())
+        .and_then(|der| Parsed::read(&der).ok())
+        .is_some_and(|parsed| parsed.public_key_info == public)
 }
 
 #[cfg(test)]
@@ -443,6 +526,59 @@ mod tests {
         let made = Issuer::kept_or_made(&place, "cluster", 1_800_000_000, 3600).expect("made");
         assert_ne!(made.certificate(), other.certificate());
         assert!(matching(&place), "the certificate is for the key beside it");
+        let _ = std::fs::remove_dir_all(place.parent().expect("base"));
+    }
+
+    #[test]
+    fn a_key_kept_with_no_certificate_is_given_one_for_it() {
+        let place = place("lone-key");
+        let key = KeyPair::generate().expect("a key");
+        private_file::create(&place.join(KEY), key.pem().as_bytes()).expect("the lone key");
+        let kept = Issuer::kept_or_made(&place, "cluster", 1_800_000_000, 3600).expect("kept");
+        assert_eq!(kept.key().public_key_info(), key.public_key_info());
+        assert!(matching(&place), "the certificate is for the key kept");
+        let _ = std::fs::remove_dir_all(place.parent().expect("base"));
+    }
+
+    #[test]
+    fn makers_racing_for_one_place_all_hold_the_pair_kept_and_everything_issued_verifies() {
+        const MAKERS: usize = 8;
+        let place = place("race");
+        let barrier = std::sync::Barrier::new(MAKERS);
+        let (start, at) = (&barrier, place.as_path());
+        let made: Vec<Issuer> = std::thread::scope(|scope| {
+            let racing: Vec<_> = (0..MAKERS)
+                .map(|_| {
+                    scope.spawn(move || {
+                        start.wait();
+                        Issuer::kept_or_made(at, "cluster", 1_800_000_000, 3600)
+                    })
+                })
+                .collect();
+            racing
+                .into_iter()
+                .map(|maker| maker.join().expect("joined").expect("kept or made"))
+                .collect()
+        });
+        let anchor = std::fs::read_to_string(place.join(CERTIFICATE)).expect("the anchor");
+        assert!(matching(&place), "the certificate is for the key beside it");
+        let parsed = Parsed::first(&anchor).expect("the anchor reads");
+        for issuer in &made {
+            assert_eq!(issuer.certificate(), anchor, "each holds the pair on disk");
+            let leaf_key = KeyPair::generate().expect("a key");
+            let chain = issuer
+                .issue(
+                    &leaf_key.public_key_info(),
+                    "node",
+                    &["node".to_string()],
+                    Purpose::Node,
+                    1_800_000_000,
+                    1_800_003_600,
+                )
+                .expect("issued");
+            let issued = Parsed::read(&leaf(&chain)).expect("the leaf reads");
+            assert!(issued.signed_by(&parsed).expect("verified"), "it verifies");
+        }
         let _ = std::fs::remove_dir_all(place.parent().expect("base"));
     }
 }
