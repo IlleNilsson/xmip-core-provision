@@ -36,7 +36,8 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   does the runtime's export the surfaces call (`xmip_operate.h` section 19),
   since the runtime may link no technology. `Issuer::kept_or_made` keeps an
   authority in a folder and makes one there where none is kept — the
-  certificate first, the key last and never over one, both private files —
+  key first and never over one, then a certificate for whichever key is
+  kept, so racing makers all hold the pair on disk, both private files —
   for `internal-ca` and `host` alike (moved here from `internal-ca`
   2026-10-21).
 - **`host`** — a web host's own certificate on this machine (ADR-0009,
