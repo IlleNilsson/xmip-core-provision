@@ -3,7 +3,7 @@
 //! request to a file, the file is carried to the machine that keeps the
 //! authority and signed there, and the chain is carried back and imported.
 //! The owner, 2026-10-22: *There has to be tools, aid, to support 'Let's
-//! encrypt', ACME when being offline* — this is the case with no network
+//! Encrypt', ACME when being offline* — this is the case with no network
 //! route at all.
 //!
 //! Each step checks the file it is given. [`request_into`] checks the names
