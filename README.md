@@ -132,7 +132,7 @@ Mounted beside `.src` (ADR-0049):
 | `internal-ca` | the cluster's own authority, issuing node certificates for server and client authentication, served over ACME, and signing a person's request |
 | `self-signed` | a lone offline node's certificate, its own anchor |
 
-`platform` — a managed platform's issuer — is reserved in `architecture.toml`.
+`platform` — a managed platform's issuer — is reserved in `architecture.xmip`.
 
 ## What it is not
 
