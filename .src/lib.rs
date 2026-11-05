@@ -44,7 +44,7 @@
 //! ([`Issuer::kept_or_made`]), issues the host a certificate for the name a
 //! browser reaches it by — an IP address written as one (RFC 5280
 //! `iPAddress`) — and signs the tester's operator request, so the
-//! Playground's web GUI is acted in with an operator certificate (ADR-0009,
+//! Essentials' web GUI is acted in with an operator certificate (ADR-0009,
 //! amendment 2026-10-21).
 //!
 //! **A node put on a machine of its own** ([`node`]). The same kept

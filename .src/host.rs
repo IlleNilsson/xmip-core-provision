@@ -1,6 +1,6 @@
 //! A host's own certificate under an authority kept in a folder: what a web
 //! host serving HTTPS on this machine presents to a browser (ADR-0009,
-//! amendment 2026-10-21) — the Playground's tester acting in the web GUI
+//! amendment 2026-10-21) — the Essentials' tester acting in the web GUI
 //! with an operator certificate the same authority signed.
 //!
 //! The authority is kept, or made where none is kept, as the cluster's own
