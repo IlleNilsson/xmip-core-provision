@@ -64,7 +64,7 @@ pub fn issue_into(
             "a host's certificate names the host a browser reaches it by",
         ));
     }
-    let authorized = Issuer::kept_or_made(authority, name, now, seconds(AUTHORITY_LIFETIME))?;
+    let authorized = self::authority(authority, name, now)?;
     let written = Issued {
         certificate: folder.join(CERTIFICATE_FILE),
         key: folder.join(KEY_FILE),
@@ -82,6 +82,16 @@ pub fn issue_into(
 }
 
 /// `lifetime` in whole seconds, as a certificate's validity counts it.
+/// The cluster's authority kept in `place`, made there named `name` and
+/// valid from `now` for [`AUTHORITY_LIFETIME`] where none is kept.
+///
+/// # Errors
+///
+/// Where it cannot be read or made, in words.
+pub fn authority(place: &Path, name: &str, now: i64) -> Result<Issuer> {
+    Issuer::kept_or_made(place, name, now, seconds(AUTHORITY_LIFETIME))
+}
+
 pub(crate) fn seconds(lifetime: Duration) -> i64 {
     i64::try_from(lifetime.as_secs()).unwrap_or(i64::MAX / 2)
 }
