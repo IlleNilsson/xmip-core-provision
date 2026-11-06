@@ -167,8 +167,19 @@ impl Parsed {
     ///
     /// Where the issuer's key is not P-256.
     pub fn signed_by(&self, issuer: &Self) -> Result<bool> {
-        let point = crate::der::point_of(&issuer.public_key_info)?;
-        Ok(self.issuer == issuer.subject && crate::verify(&point, &self.signed, &self.signature))
+        Ok(self.issuer == issuer.subject && issuer.verifies(&self.signed, &self.signature)?)
+    }
+
+    /// Whether its key made `signature`, DER, over `message`: what an
+    /// authority signs that is no certificate, a node's slice among them
+    /// (ADR-0031, amendment 2026-11-06).
+    ///
+    /// # Errors
+    ///
+    /// Where its key is not P-256.
+    pub fn verifies(&self, message: &[u8], signature: &[u8]) -> Result<bool> {
+        let point = crate::der::point_of(&self.public_key_info)?;
+        Ok(crate::verify(&point, message, signature))
     }
 }
 

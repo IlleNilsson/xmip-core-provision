@@ -17,9 +17,9 @@
 use std::path::Path;
 use std::time::Duration;
 
-use crate::host::{AUTHORITY_LIFETIME, Fresh, Issued, seconds};
+use crate::host::{Fresh, Issued};
 use crate::issuer::CERTIFICATE;
-use crate::{Issuer, ProvisionError, Purpose, Result};
+use crate::{ProvisionError, Purpose, Result};
 
 /// How long a node's certificate is valid: ninety days, the owner's,
 /// 2026-10-22 (ADR-0034, amendment 2026-10-22).
@@ -58,7 +58,7 @@ pub fn issue_into(
             "a node's certificate names the node it is issued to",
         ));
     }
-    let authorized = Issuer::kept_or_made(authority, name, now, seconds(AUTHORITY_LIFETIME))?;
+    let authorized = crate::host::authority(authority, name, now)?;
     let every = reached_by(node, names);
     std::fs::create_dir_all(folder)
         .map_err(|failure| ProvisionError::new(format!("{}: {failure}", folder.display())))?;
