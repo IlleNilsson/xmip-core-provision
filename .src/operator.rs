@@ -247,17 +247,17 @@ mod tests {
         let der = pem::decode(REQUEST_LABEL, &text).expect("pem").remove(0);
         let public = KeyPair::from_pem(&key).expect("key").public_key_info();
         assert_eq!(csr::read(&der).expect("read").public_key_info, public);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            let mode = std::fs::metadata(&written.key).expect("metadata").mode() & 0o777;
-            assert_eq!(mode, 0o600);
+        cfg_select! {
+            unix => {{
+                use std::os::unix::fs::MetadataExt;
+                let mode = std::fs::metadata(&written.key).expect("metadata").mode() & 0o777;
+                assert_eq!(mode, 0o600);
+            }}
+            windows => assert_eq!(
+                secret::private_file::described(&written.key).expect("described"),
+                secret::private_file::owner_only(false).expect("owner only")
+            ),
         }
-        #[cfg(windows)]
-        assert_eq!(
-            secret::private_file::described(&written.key).expect("described"),
-            secret::private_file::owner_only(false).expect("owner only")
-        );
 
         let refused = request_into("frank@example.org", &folder).expect_err("there");
         assert!(

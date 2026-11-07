@@ -267,19 +267,17 @@ mod tests {
 
     /// The access `path` has, and the owner-only access it should have.
     fn access(path: &Path, directory: bool) -> (String, String) {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            let mode = std::fs::metadata(path).expect("metadata").mode() & 0o777;
-            let owner = if directory { "700" } else { "600" };
-            (format!("{mode:o}"), owner.to_string())
-        }
-        #[cfg(windows)]
-        {
-            (
+        cfg_select! {
+            unix => {
+                use std::os::unix::fs::MetadataExt;
+                let mode = std::fs::metadata(path).expect("metadata").mode() & 0o777;
+                let owner = if directory { "700" } else { "600" };
+                (format!("{mode:o}"), owner.to_string())
+            }
+            windows => (
                 private_file::described(path).expect("described"),
                 private_file::owner_only(directory).expect("owner only"),
-            )
+            ),
         }
     }
 
