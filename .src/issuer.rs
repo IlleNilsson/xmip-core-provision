@@ -500,19 +500,19 @@ mod tests {
         let again = Issuer::kept_or_made(&place, "cluster", 1_800_000_000, 3600).expect("read");
         assert_eq!(made.certificate(), again.certificate());
         assert!(matching(&place));
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            let bits = |path: &Path| std::fs::metadata(path).expect("metadata").mode() & 0o777;
-            assert_eq!(bits(&place.join(KEY)), 0o600);
-            assert_eq!(bits(&place), 0o700);
-        }
-        #[cfg(windows)]
-        {
-            let described = |path: &Path| private_file::described(path).expect("described");
-            let owner = |directory| private_file::owner_only(directory).expect("owner only");
-            assert_eq!(described(&place.join(KEY)), owner(false));
-            assert_eq!(described(&place), owner(true));
+        cfg_select! {
+            unix => {{
+                use std::os::unix::fs::MetadataExt;
+                let bits = |path: &Path| std::fs::metadata(path).expect("metadata").mode() & 0o777;
+                assert_eq!(bits(&place.join(KEY)), 0o600);
+                assert_eq!(bits(&place), 0o700);
+            }}
+            windows => {
+                let described = |path: &Path| private_file::described(path).expect("described");
+                let owner = |directory| private_file::owner_only(directory).expect("owner only");
+                assert_eq!(described(&place.join(KEY)), owner(false));
+                assert_eq!(described(&place), owner(true));
+            }
         }
         let _ = std::fs::remove_dir_all(place.parent().expect("base"));
     }
