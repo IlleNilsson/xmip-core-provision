@@ -3,11 +3,11 @@
 //! it may ask.
 
 use crate::csr::Requested;
-use crate::der::{
+use crate::{ProvisionError, Result};
+use tls::certificate::oid::{
     BASIC_CONSTRAINTS, CLIENT_AUTH, COMMON_NAME, EXT_KEY_USAGE, KEY_USAGE, SERVER_AUTH,
     SUBJECT_ALT_NAME,
 };
-use crate::{ProvisionError, Result};
 
 /// The longest common name X.520 allows (`ub-common-name`).
 const COMMON_NAME_LONGEST: usize = 64;
@@ -176,7 +176,7 @@ impl Purpose {
             }
             // digitalSignature alone, the one bit a leaf carries.
             _ if id == KEY_USAGE => {
-                let (bits, _) = asn1::expect(value, crate::der::BIT_STRING)?;
+                let (bits, _) = asn1::expect(value, asn1::BIT_STRING)?;
                 // The first byte counts the unused bits; digitalSignature is
                 // the first bit of the second.
                 let beyond = bits.iter().skip(1).enumerate().any(|(at, byte)| {

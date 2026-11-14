@@ -7,12 +7,13 @@
 
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::{
-    ECDSA_P256_SHA256_ASN1, ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P256_SHA256_FIXED,
-    ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _, UnparsedPublicKey,
+    ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P256_SHA256_FIXED, ECDSA_P256_SHA256_FIXED_SIGNING,
+    EcdsaKeyPair, KeyPair as _, UnparsedPublicKey,
 };
+use codec::pem;
 use zeroize::Zeroizing;
 
-use crate::{ProvisionError, Result, der, pem};
+use crate::{ProvisionError, Result, der};
 
 /// The PEM label PKCS #8 is written under.
 const LABEL: &str = "PRIVATE KEY";
@@ -121,14 +122,6 @@ impl KeyPair {
     }
 }
 
-/// Whether `signature`, DER, is `point`'s over `message`.
-#[must_use]
-pub fn verify(point: &[u8], message: &[u8], signature: &[u8]) -> bool {
-    UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, point)
-        .verify(message, signature)
-        .is_ok()
-}
-
 /// Whether `signature`, `r` and `s` fixed width, is `point`'s over
 /// `message`.
 #[must_use]
@@ -143,16 +136,7 @@ pub fn verify_fixed(point: &[u8], message: &[u8], signature: &[u8]) -> bool {
 /// trusting it.
 #[must_use]
 pub fn fingerprint(der: &[u8]) -> String {
-    codec::hex::encode(&sha256(der)).to_ascii_uppercase()
-}
-
-/// SHA-256 of `bytes`: a JWK thumbprint, a dns-01 record's value.
-#[must_use]
-pub fn sha256(bytes: &[u8]) -> [u8; 32] {
-    let digest = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA256, bytes);
-    let mut out = [0; 32];
-    out.copy_from_slice(digest.as_ref());
-    out
+    codec::hex::encode(&codec::digest::sha256(der)).to_ascii_uppercase()
 }
 
 #[cfg(test)]
@@ -167,8 +151,8 @@ mod tests {
         assert_eq!(key.point().len(), 65);
 
         let signature = again.sign(b"signed").expect("signs");
-        assert!(verify(key.point(), b"signed", &signature));
-        assert!(!verify(key.point(), b"other", &signature));
+        assert!(tls::certificate::verify(key.point(), b"signed", &signature));
+        assert!(!tls::certificate::verify(key.point(), b"other", &signature));
         let fixed = again.sign_fixed(b"signed").expect("signs");
         assert_eq!(fixed.len(), 64);
         assert!(verify_fixed(key.point(), b"signed", &fixed));

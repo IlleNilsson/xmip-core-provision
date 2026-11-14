@@ -87,10 +87,18 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   the leaf for the request's key and names, valid now, reaching the
   node's anchors — before `node.pem`, `node.key` and, where the node held
   none, `anchors.pem` are written.
-- **`Parsed`** — a certificate read once: its serial, names, validity,
-  key, extensions and the signature over it, which every reader above
-  reads from. Every certificate here names its own key and a leaf its
-  issuer's (key identifiers, RFC 7093 method 1).
+- **Read back by the estate's one reader** — what is written here, a
+  certificate, a request's subject, names and key, a revocation list's
+  times, is read through `xmip-core-library-tls`'s `certificate`
+  (`tls::certificate::Certificate`: its serial, names, validity, key,
+  extensions and the signature over it, read once), which also holds the
+  object identifiers written here (`certificate::oid`) and checks a P-256
+  signature (`certificate::verify`); its PEM through `codec::pem` and its
+  SHA-256 through `codec::digest`. Until 2026-11-13 this capability
+  carried a reader (`Parsed`), a PEM (`pem`) and a `sha256`, `verify` and
+  `point_of` of its own (ADR-0034, amendment 2026-11-13). Every
+  certificate here names its own key and a leaf its issuer's (key
+  identifiers, RFC 7093 method 1).
 - **A node's certificate always comes from the cluster's authority**:
   `[provision.node]` from a source that trusts the operating system's
   store — a public authority — is refused; its `anchors` must name the
@@ -116,7 +124,8 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   folder it left is removed at the next write.
 - **`KeyPair`, `csr`, `Draft`** — the P-256 key, the PKCS #10 request and
   the X.509 certificate, written once over `xmip-core-library-asn1` and
-  signed with aws-lc-rs, the crypto the TLS library already builds; `serves`
+  signed with aws-lc-rs, the crypto the TLS library already builds;
+  `verify_fixed` checks a JWS signature, `r` and `s` fixed width; `serves`
   reads whether a certificate authenticates what its purpose needs.
 - **`read`, `NAMES`, `FILES`, `Files`** — `[provision.<purpose>]` read
   through the chosen technology's settings declaration, refused in words

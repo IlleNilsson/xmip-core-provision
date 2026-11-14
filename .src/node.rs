@@ -102,7 +102,8 @@ pub(crate) fn reached_by(node: &str, names: &[String]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{KeyPair, pem};
+    use crate::KeyPair;
+    use codec::pem;
 
     #[test]
     fn a_node_is_issued_for_its_names_under_the_authority_kept_with_its_anchor() {

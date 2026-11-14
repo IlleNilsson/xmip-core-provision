@@ -7,7 +7,9 @@ use std::path::Path;
 use secret::private_file;
 use zeroize::Zeroizing;
 
-use crate::{ProvisionError, Result, pem, validity};
+use codec::pem;
+
+use crate::{ProvisionError, Result, validity};
 
 /// The files a provisioned certificate is kept in, in its generation's
 /// folder of its purpose's place.

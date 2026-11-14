@@ -6,8 +6,8 @@
 
 use codec::base64::encode_url_unpadded;
 
-use crate::parsed::Parsed;
 use crate::{ProvisionError, Result};
+use tls::certificate::Certificate;
 
 /// A certificate's standing at a moment: when it ends, when it is renewed,
 /// and which of the two has come.
@@ -32,12 +32,12 @@ impl Standing {
     ///
     /// Where the text holds no certificate.
     pub fn of(text: &str, now: i64) -> Result<Self> {
-        Ok(Self::at(&Parsed::first(text)?, now))
+        Ok(Self::at(&Certificate::first(text)?, now))
     }
 
     /// The standing at `now` of a certificate read.
     #[must_use]
-    pub const fn at(read: &Parsed, now: i64) -> Self {
+    pub const fn at(read: &Certificate, now: i64) -> Self {
         Self::between(read.not_before, read.not_after, now)
     }
 
@@ -88,7 +88,7 @@ pub const fn window(not_before: i64, not_after: i64) -> (i64, i64) {
 /// # Errors
 ///
 /// Where it carries no authority key identifier.
-pub fn identifier(read: &Parsed) -> Result<String> {
+pub fn identifier(read: &Certificate) -> Result<String> {
     let authority = read
         .authority_key_identifier()?
         .ok_or_else(|| ProvisionError::new("the certificate names no authority key identifier"))?;

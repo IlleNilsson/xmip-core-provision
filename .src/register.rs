@@ -17,8 +17,9 @@ use std::path::{Path, PathBuf};
 use secret::private_file;
 
 use crate::crl::{self, Reason, Revoked};
-use crate::parsed::Parsed;
-use crate::{ProvisionError, Purpose, Result, pem, renewal};
+use crate::{ProvisionError, Purpose, Result, renewal};
+use codec::pem;
+use tls::certificate::Certificate;
 
 /// The folder each signed certificate is kept in.
 const ISSUED: &str = "issued";
@@ -136,7 +137,7 @@ impl Register {
     ///
     /// Where it does not read or cannot be written.
     pub fn record(&self, leaf: &[u8]) -> Result<()> {
-        let read = Parsed::read(leaf)?;
+        let read = Certificate::read(leaf)?;
         let folder = self.place.join(ISSUED);
         private_file::directory(&folder).map_err(|failure| failed(&folder, &failure))?;
         let path = folder.join(format!("{}.pem", read.serial_hex()));
@@ -185,7 +186,7 @@ impl Register {
     /// The certificate kept at `path`, with its revocation.
     fn read(&self, path: &Path) -> Result<Record> {
         let text = std::fs::read_to_string(path).map_err(|failure| failed(path, &failure))?;
-        let read = Parsed::first(&text)?;
+        let read = Certificate::first(&text)?;
         let serial = read.serial_hex();
         let purpose = [Purpose::Node, Purpose::Receive, Purpose::Operator]
             .into_iter()

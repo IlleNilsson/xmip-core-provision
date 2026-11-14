@@ -7,10 +7,12 @@
 
 use std::path::{Path, PathBuf};
 
+use codec::pem;
+use tls::certificate::Certificate;
 use xmip_core_provision::carried::{self, NEXT_KEY_FILE, REQUEST_FILE};
 use xmip_core_provision::crl::{self, Reason};
 use xmip_core_provision::renewal::{self, Standing};
-use xmip_core_provision::{Issuer, KeyPair, Parsed, Purpose, node, pem};
+use xmip_core_provision::{Issuer, KeyPair, Purpose, node};
 
 const NOW: i64 = 1_800_000_000;
 
@@ -64,7 +66,7 @@ fn what_an_authority_signs_is_registered_and_names_where_its_list_is() {
         .expect("published");
     let issuer = Issuer::kept(&place.0).expect("read again");
     let chain = leaf_of(&issuer, "r1.example");
-    let leaf = Parsed::first(&chain).expect("the leaf");
+    let leaf = Certificate::first(&chain).expect("the leaf");
     let text =
         String::from_utf8_lossy(&pem::decode("CERTIFICATE", &chain).expect("pem")[0]).into_owned();
     assert!(
@@ -109,7 +111,7 @@ fn a_revocation_is_listed_at_once_signed_by_the_authority_and_never_twice() {
     let place = Place::new("revoke");
     let issuer = kept(&place.0);
     let chain = leaf_of(&issuer, "r2.example");
-    let serial = Parsed::first(&chain).expect("leaf").serial_hex();
+    let serial = Certificate::first(&chain).expect("leaf").serial_hex();
     let revoked = issuer
         .revoke(&serial.to_ascii_lowercase(), Reason::KeyCompromise, NOW + 5)
         .expect("revoked");
@@ -119,10 +121,10 @@ fn a_revocation_is_listed_at_once_signed_by_the_authority_and_never_twice() {
     );
 
     let listed = crl::read(&issuer.revocation_list(NOW + 6).expect("listed")).expect("read");
-    let authority = Parsed::first(issuer.certificate()).expect("the authority");
+    let authority = Certificate::first(issuer.certificate()).expect("the authority");
     assert!(listed.signed_by(&authority).expect("checked"));
     let named = listed
-        .names(&Parsed::first(&chain).expect("leaf").serial)
+        .names(&Certificate::first(&chain).expect("leaf").serial)
         .expect("named");
     assert_eq!((named.at, named.reason), (NOW + 5, Reason::KeyCompromise));
 
@@ -152,7 +154,7 @@ fn a_backup_is_the_same_authority_and_is_made_into_an_empty_folder_alone() {
 
     let restored = Issuer::kept(&copy.0).expect("the copy is an authority");
     assert_eq!(restored.certificate(), issuer.certificate());
-    let serial = Parsed::first(&chain).expect("leaf").serial_hex();
+    let serial = Certificate::first(&chain).expect("leaf").serial_hex();
     assert!(restored.register().expect("register").find(&serial).is_ok());
     let refused = register.back_up(&copy.0).expect_err("not empty");
     assert!(refused.message.contains("empty folder"), "{refused}");
@@ -203,7 +205,10 @@ fn a_node_certificate_carried_across_an_air_gap_is_requested_signed_and_imported
     let key = std::fs::read_to_string(&imported.key).expect("the key");
     let public = KeyPair::from_pem(&key).expect("a key").public_key_info();
     let held = std::fs::read_to_string(&imported.certificate).expect("the chain");
-    assert_eq!(Parsed::first(&held).expect("leaf").public_key_info, public);
+    assert_eq!(
+        Certificate::first(&held).expect("leaf").public_key_info,
+        public
+    );
     assert_eq!(
         std::fs::read_to_string(&imported.anchors).expect("anchors"),
         issuer.certificate()
@@ -243,7 +248,7 @@ fn a_node_issued_on_the_operators_machine_is_registered_too() {
     let (authority, folder) = (Place::new("issued"), Place::new("issued-node"));
     let issued = node::issue_into(&authority.0, "test", "r6", &[], &folder.0, NOW).expect("issued");
     let chain = std::fs::read_to_string(issued.certificate).expect("chain");
-    let serial = Parsed::first(&chain).expect("leaf").serial_hex();
+    let serial = Certificate::first(&chain).expect("leaf").serial_hex();
     let kept = Issuer::kept(&authority.0).expect("kept");
     assert_eq!(
         kept.register()

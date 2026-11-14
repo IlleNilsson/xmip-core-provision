@@ -4,13 +4,11 @@
 //! responder — as Let's Encrypt has published it since it ended OCSP on
 //! 2025-08-06 (<https://letsencrypt.org/2025/08/06/ocsp-service-has-reached-end-of-life/>).
 
-use asn1::{ENUMERATED, INTEGER, OCTET_STRING, SEQUENCE, tlv};
+use asn1::{BIT_STRING, ENUMERATED, INTEGER, OCTET_STRING, SEQUENCE, tlv};
+use tls::certificate::oid::{AUTHORITY_KEY_IDENTIFIER, CRL_NUMBER, CRL_REASON};
+use tls::certificate::{self, Certificate};
 
-use crate::der::{
-    AUTHORITY_KEY_IDENTIFIER, BIT_STRING, CRL_NUMBER, CRL_REASON, ecdsa_sha256, extension,
-    key_identifier, read_time, sequence, time,
-};
-use crate::parsed::Parsed;
+use crate::der::{ecdsa_sha256, extension, key_identifier, sequence, time};
 use crate::{KeyPair, ProvisionError, Result};
 
 /// Why a certificate was revoked: the reasons RFC 5280 section 5.3.1 gives
@@ -133,11 +131,10 @@ impl Listed {
     /// # Errors
     ///
     /// Where the authority's key is not P-256.
-    pub fn signed_by(&self, authority: &Parsed) -> Result<bool> {
-        let point = crate::der::point_of(&authority.public_key_info)?;
+    pub fn signed_by(&self, authority: &Certificate) -> Result<bool> {
         Ok(
             self.issuer == authority.subject
-                && crate::verify(&point, &self.signed, &self.signature),
+                && authority.verifies(&self.signed, &self.signature)?,
         )
     }
 
@@ -222,8 +219,8 @@ pub fn read(der: &[u8]) -> Result<Listed> {
     let (next_tag, next, mut rest) = asn1::read(rest)?;
     let mut listed = Listed {
         issuer,
-        this_update: read_time(this_tag, this)?,
-        next_update: read_time(next_tag, next)?,
+        this_update: certificate::time(this_tag, this)?,
+        next_update: certificate::time(next_tag, next)?,
         number: 0,
         revoked: Vec::new(),
         signed,
@@ -261,7 +258,7 @@ fn read_entry(entry: &[u8]) -> Result<Revoked> {
     }
     Ok(Revoked {
         serial: serial.to_vec(),
-        at: read_time(tag, at)?,
+        at: certificate::time(tag, at)?,
         reason,
     })
 }
@@ -317,7 +314,7 @@ mod tests {
         assert_eq!(listed.revoked, revoked);
         assert_eq!((listed.number, listed.this_update), (7, 1_800_000_300));
         assert_eq!(listed.next_update, 1_800_604_800);
-        let parsed = Parsed::read(&authority).expect("the authority");
+        let parsed = Certificate::read(&authority).expect("the authority");
         assert!(listed.signed_by(&parsed).expect("checked"));
         assert!(listed.names(&[0x43]).is_some());
         assert!(listed.names(&[0x44]).is_none());

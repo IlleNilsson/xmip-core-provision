@@ -21,12 +21,17 @@ xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core
 # X.690, written and read once for the estate: the CSR and the certificate
 # are DER.
 asn1 = { package = "xmip-core-library-asn1", git = "https://github.com/IlleNilsson/xmip-core-library-asn1", branch = "main" }
-# Base64 for PEM, the civil calendar for a certificate's times, and the
-# estate's one random source for a serial number.
+# PEM, the civil calendar for a certificate's times, SHA-256 for a key
+# identifier and a fingerprint, and the estate's one random source for a
+# serial number.
 codec = { package = "xmip-core-library-codec", git = "https://github.com/IlleNilsson/xmip-core-library-codec", branch = "main" }
+# The estate's one certificate reader (`tls::certificate`): what this
+# capability writes it reads back there — a certificate, a request's
+# subject and names, a time, a key — and a P-256 signature is checked there.
+tls = { package = "xmip-core-library-tls", git = "https://github.com/IlleNilsson/xmip-core-library-tls", branch = "main" }
 # The crypto xmip-core-library-tls already builds (rustls's default
-# provider): P-256 keys and their ECDSA signatures, SHA-256. Its assembler
-# comes prebuilt, so a Windows build needs no NASM.
+# provider): P-256 keys and their ECDSA signatures. Its assembler comes
+# prebuilt, so a Windows build needs no NASM.
 aws-lc-rs = { version = "1", features = ["prebuilt-nasm"] }
 # A private key's bytes are overwritten when they are dropped.
 zeroize = "1"
