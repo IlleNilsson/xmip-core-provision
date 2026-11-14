@@ -15,7 +15,9 @@ use std::path::Path;
 use xcore::settings::Read;
 use zeroize::Zeroizing;
 
-use crate::{Issuer, KeyPair, Purpose, Result, csr, der, pem};
+use codec::pem;
+
+use crate::{Issuer, KeyPair, Purpose, Result, csr, der};
 
 /// The PEM label a request is written under (RFC 7468).
 pub const REQUEST_LABEL: &str = "CERTIFICATE REQUEST";
@@ -53,7 +55,7 @@ pub fn information(person: &str, public_key: &[u8]) -> Result<Vec<u8>> {
     let subject = Purpose::person(person)?;
     let point = match public_key {
         [0x04, ..] if public_key.len() == 65 => public_key.to_vec(),
-        _ => der::point_of(public_key)?,
+        _ => tls::certificate::point_of(public_key)?,
     };
     Ok(csr::information(
         subject,

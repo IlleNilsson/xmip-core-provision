@@ -38,6 +38,9 @@
 //! technologies that request, issue or sign hold none of it (ADR-0044); and
 //! so is what an authority signs ([`Issuer`]), which a surface reaches
 //! through the runtime's export where a technology may not be linked.
+//! What is written is read back by the estate's one certificate reader,
+//! `xmip-core-library-tls`'s `certificate`, and its PEM by `codec::pem`;
+//! until 2026-11-13 this capability carried a reader and a PEM of its own.
 //!
 //! **A web host on this machine** ([`host`]). An authority kept in a
 //! folder, made there where none is as the cluster's own is
@@ -78,8 +81,6 @@ pub mod issuer;
 mod key;
 pub mod node;
 pub mod operator;
-mod parsed;
-pub mod pem;
 mod provisioned;
 mod provisioner;
 mod purpose;
@@ -93,12 +94,11 @@ pub use certificate::{AUTHORITY_PATH, CRL_PATH, Draft, Usage};
 pub use configuration::{
     Configured, FILES, NAMES, OPERATOR, OPERATOR_LIFETIME, SOURCE, names, read,
 };
-pub use der::{key_identifier, point_of};
+pub use der::key_identifier;
 pub use error::ProvisionError;
 pub use files::Files;
 pub use issuer::Issuer;
-pub use key::{KeyPair, fingerprint, sha256, verify, verify_fixed};
-pub use parsed::Parsed;
+pub use key::{KeyPair, fingerprint, verify_fixed};
 pub use provisioned::Provisioned;
 pub use provisioner::Provisioner;
 pub use purpose::Purpose;

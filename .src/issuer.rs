@@ -9,9 +9,11 @@ use std::path::Path;
 use secret::private_file;
 
 use crate::crl::Reason;
-use crate::parsed::Parsed;
 use crate::register::{Record, Register};
-use crate::{Draft, KeyPair, ProvisionError, Purpose, Result, Usage, csr, pem};
+use codec::pem;
+use tls::certificate::Certificate;
+
+use crate::{Draft, KeyPair, ProvisionError, Purpose, Result, Usage, csr};
 
 /// The file an authority's key is kept in, inside its place.
 pub const KEY: &str = "authority.key";
@@ -51,7 +53,7 @@ impl Issuer {
             .first()
             .ok_or_else(|| ProvisionError::new("the authority's PEM holds no CERTIFICATE"))?;
         Ok(Self {
-            name: Parsed::read(first)?.subject,
+            name: Certificate::read(first)?.subject,
             key,
             certificate,
             register: None,
@@ -336,19 +338,21 @@ fn for_key(text: &str, public: &[u8]) -> bool {
     pem::decode("CERTIFICATE", text)
         .ok()
         .and_then(|blocks| blocks.into_iter().next())
-        .and_then(|der| Parsed::read(&der).ok())
+        .and_then(|der| Certificate::read(&der).ok())
         .is_some_and(|parsed| parsed.public_key_info == public)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::der::{
-        BASIC_CONSTRAINTS, CLIENT_AUTH, COMMON_NAME, EXTENSION_REQUEST, SERVER_AUTH, SET,
-        SUBJECT_ALT_NAME, extension, name, oid, read_name, sequence,
-    };
+    use crate::der::{extension, name, oid, sequence};
     use crate::operator;
-    use asn1::{INTEGER, SEQUENCE, tlv};
+    use asn1::{INTEGER, SEQUENCE, SET, tlv};
+    use tls::certificate::oid::{
+        BASIC_CONSTRAINTS, CLIENT_AUTH, COMMON_NAME, EXTENSION_REQUEST, SERVER_AUTH,
+        SUBJECT_ALT_NAME,
+    };
+    use tls::certificate::text_attributes;
 
     fn authority() -> Issuer {
         let key = KeyPair::generate().expect("a key");
@@ -391,7 +395,7 @@ mod tests {
         assert!(!crate::serves(&leaf, Purpose::Receive).expect("read"));
         assert!(!crate::serves(&leaf, Purpose::Node).expect("read"));
         assert_eq!(
-            read_name(&Parsed::read(&leaf).expect("read").subject).expect("name"),
+            text_attributes(&Certificate::read(&leaf).expect("read").subject).expect("name"),
             [(COMMON_NAME.to_vec(), "alice@example.org".to_string())]
         );
         let alternative = oid(SUBJECT_ALT_NAME);
@@ -562,7 +566,7 @@ mod tests {
         });
         let anchor = std::fs::read_to_string(place.join(CERTIFICATE)).expect("the anchor");
         assert!(matching(&place), "the certificate is for the key beside it");
-        let parsed = Parsed::first(&anchor).expect("the anchor reads");
+        let parsed = Certificate::first(&anchor).expect("the anchor reads");
         for issuer in &made {
             assert_eq!(issuer.certificate(), anchor, "each holds the pair on disk");
             let leaf_key = KeyPair::generate().expect("a key");
@@ -576,7 +580,7 @@ mod tests {
                     1_800_003_600,
                 )
                 .expect("issued");
-            let issued = Parsed::read(&leaf(&chain)).expect("the leaf reads");
+            let issued = Certificate::read(&leaf(&chain)).expect("the leaf reads");
             assert!(issued.signed_by(&parsed).expect("verified"), "it verifies");
         }
         let _ = std::fs::remove_dir_all(place.parent().expect("base"));

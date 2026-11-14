@@ -3,7 +3,7 @@
 //! chose.
 
 use crate::Result;
-use crate::parsed::Parsed;
+use tls::certificate::Certificate;
 
 /// A certificate's `notBefore` and `notAfter`, seconds since the epoch.
 ///
@@ -11,7 +11,7 @@ use crate::parsed::Parsed;
 ///
 /// Where `der` is not a certificate or its times are not times.
 pub fn validity(der: &[u8]) -> Result<(i64, i64)> {
-    let read = Parsed::read(der)?;
+    let read = Certificate::read(der)?;
     Ok((read.not_before, read.not_after))
 }
 

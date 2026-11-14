@@ -11,10 +11,12 @@
 //! revocation list and the authority's certificate are fetched from.
 
 use asn1::{INTEGER, OCTET_STRING, tlv};
-
-use crate::der::{
+use tls::certificate::oid::{
     AUTHORITY_INFORMATION_ACCESS, AUTHORITY_KEY_IDENTIFIER, BASIC_CONSTRAINTS, CA_ISSUERS,
     CRL_DISTRIBUTION_POINTS, EXT_KEY_USAGE, KEY_USAGE, SUBJECT_ALT_NAME, SUBJECT_KEY_IDENTIFIER,
+};
+
+use crate::der::{
     alternative_names, ecdsa_sha256, extension, key_identifier, name, oid, sequence, time,
 };
 use crate::{KeyPair, ProvisionError, Purpose, Result};
@@ -218,10 +220,14 @@ mod tests {
             let (algorithm, rest) = asn1::expect(after, asn1::SEQUENCE).expect("algorithm");
             (
                 algorithm,
-                asn1::expect(rest, crate::der::BIT_STRING).expect("bits").0,
+                asn1::expect(rest, asn1::BIT_STRING).expect("bits").0,
             )
         };
-        assert!(crate::verify(authority.point(), tbs, &signature[1..]));
+        assert!(tls::certificate::verify(
+            authority.point(),
+            tbs,
+            &signature[1..]
+        ));
     }
 
     #[test]

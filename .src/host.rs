@@ -137,7 +137,7 @@ impl Fresh<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pem;
+    use codec::pem;
 
     #[test]
     fn a_host_is_issued_under_the_authority_kept_and_one_is_made_where_none_is() {

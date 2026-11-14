@@ -4,13 +4,11 @@
 //! (ADR-0034, amendment 2026-10-15), and read by the authority that answers
 //! it. What a request may ask is its purpose's rule, `Purpose::admit`.
 
-use asn1::{INTEGER, SEQUENCE, tlv};
+use asn1::{BIT_STRING, INTEGER, SEQUENCE, SET, tlv};
+use tls::certificate;
+use tls::certificate::oid::{EXT_KEY_USAGE, EXTENSION_REQUEST, SUBJECT_ALT_NAME};
 
-use crate::der::{
-    BIT_STRING, EXT_KEY_USAGE, EXTENSION_REQUEST, SET, SUBJECT_ALT_NAME, alternative_names,
-    bit_string, ecdsa_sha256, extension, name, oid, point_of, read_alternative_names, read_name,
-    sequence,
-};
+use crate::der::{alternative_names, bit_string, ecdsa_sha256, extension, name, oid, sequence};
 use crate::{KeyPair, ProvisionError, Result};
 
 /// What a request asks for, its signature verified.
@@ -105,15 +103,15 @@ pub fn read(der: &[u8]) -> Result<Requested> {
 
     let (_, rest) = asn1::expect(info_contents, INTEGER)?;
     let (_, _, after_subject) = asn1::read(rest)?;
-    let subject = read_name(&rest[..rest.len() - after_subject.len()])?;
+    let subject = certificate::text_attributes(&rest[..rest.len() - after_subject.len()])?;
     let rest = after_subject;
     let (_, _, attributes) = asn1::read(rest)?;
     let public_key_info = rest[..rest.len() - attributes.len()].to_vec();
-    let point = point_of(&public_key_info)?;
+    let point = certificate::point_of(&public_key_info)?;
     let signed = bits
         .split_first()
         .filter(|(unused, _)| **unused == 0)
-        .is_some_and(|(_, signature)| crate::verify(&point, info, signature));
+        .is_some_and(|(_, signature)| certificate::verify(&point, info, signature));
     if !signed {
         return Err(ProvisionError::new(
             "the request's signature does not verify under its own key",
@@ -122,7 +120,7 @@ pub fn read(der: &[u8]) -> Result<Requested> {
 
     let extensions = requested_extensions(attributes)?;
     let names = match extensions.iter().find(|(id, _)| id == SUBJECT_ALT_NAME) {
-        Some((_, value)) => read_alternative_names(value)?,
+        Some((_, value)) => certificate::dns_names(value)?,
         None => Vec::new(),
     };
     Ok(Requested {
@@ -163,7 +161,7 @@ fn requested_extensions(attributes: &[u8]) -> Result<Vec<(Vec<u32>, Vec<u8>)>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::der::{CLIENT_AUTH, COMMON_NAME};
+    use tls::certificate::oid::{CLIENT_AUTH, COMMON_NAME};
 
     #[test]
     fn a_request_is_read_back_with_its_names_and_key() {

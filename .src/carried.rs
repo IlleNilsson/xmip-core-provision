@@ -24,8 +24,9 @@ use secret::private_file;
 
 use crate::node::{ANCHORS_FILE, CERTIFICATE_FILE, KEY_FILE, NODE_LIFETIME, reached_by};
 use crate::operator::REQUEST_LABEL;
-use crate::parsed::Parsed;
-use crate::{Issuer, KeyPair, ProvisionError, Purpose, Result, csr, pem};
+use crate::{Issuer, KeyPair, ProvisionError, Purpose, Result, csr};
+use codec::pem;
+use tls::certificate::Certificate;
 
 /// The request a node writes, carried to the authority.
 pub const REQUEST_FILE: &str = "node.csr";
@@ -158,7 +159,7 @@ pub fn sign(authority: &Path, text: &str, expected: &[String], now: i64) -> Resu
     let issuer = Issuer::kept(authority)?;
     let lifetime = i64::try_from(NODE_LIFETIME.as_secs()).unwrap_or(i64::MAX / 2);
     let chain = issuer.sign(der, Purpose::Node, now, now.saturating_add(lifetime))?;
-    let leaf = Parsed::first(&chain)?;
+    let leaf = Certificate::first(&chain)?;
     Ok(Signed {
         serial: leaf.serial_hex(),
         names: leaf.names()?,
@@ -198,10 +199,10 @@ pub fn import(text: &str, folder: &Path, now: i64) -> Result<Imported> {
         .transpose()?
         .ok_or_else(|| ProvisionError::new(format!("{REQUEST_FILE} holds no request")))?;
 
-    let chain: Vec<Parsed> = pem::decode("CERTIFICATE", text)?
+    let chain: Vec<Certificate> = pem::decode("CERTIFICATE", text)?
         .iter()
-        .map(|der| Parsed::read(der))
-        .collect::<Result<_>>()?;
+        .map(|der| Certificate::read(der))
+        .collect::<tls::Result<_>>()?;
     let (Some(leaf), Some(root)) = (chain.first(), chain.last()) else {
         return Err(ProvisionError::new("the file holds no CERTIFICATE"));
     };
