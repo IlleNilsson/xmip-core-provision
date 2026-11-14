@@ -109,8 +109,9 @@ pub use validity::{renewal_moment, validity};
 /// The result of provisioning.
 pub type Result<T> = core::result::Result<T, ProvisionError>;
 
-/// Seconds since the epoch, now: the clock a provisioner renews by.
+/// Seconds since the epoch, now: the clock a provisioner renews by, the
+/// one clock (`xcore::Clock`).
 #[must_use]
 pub fn now() -> i64 {
-    codec::civil::unix_seconds(std::time::SystemTime::now())
+    xcore::Clock::unix_seconds(&xcore::SystemClock)
 }

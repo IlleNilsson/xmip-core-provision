@@ -16,7 +16,8 @@ path = ".src/lib.rs"
 
 [dependencies]
 # The settings shape every technology declares its configuration in, and the
-# one reading of it (ADR-0044, amendment 2026-09-26).
+# one reading of it (ADR-0044, amendment 2026-09-26); and the one clock
+# (xcore::Clock) a provisioner renews by.
 xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
 # X.690, written and read once for the estate: the CSR and the certificate
 # are DER.
