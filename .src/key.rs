@@ -3,14 +3,18 @@
 //!
 //! P-256 because every TLS peer, every public authority and every ACME
 //! server takes it, and RFC 8555 names ES256 among what a server must
-//! accept. The key is kept as PKCS #8, overwritten when it is dropped.
+//! accept. The key is kept as PKCS #8, overwritten when it is dropped. It
+//! signs a JWS as ES256 through `jose::jws::SigningKey`, so the JWS is
+//! written by the estate's one JOSE and the private half stays here; an
+//! ES256 signature is checked by the library's key (`jose::jwk::Key`).
 
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::{
-    ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P256_SHA256_FIXED, ECDSA_P256_SHA256_FIXED_SIGNING,
-    EcdsaKeyPair, KeyPair as _, UnparsedPublicKey,
+    ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _,
 };
 use codec::pem;
+use jose::JoseError;
+use jose::jws::{Algorithm, SigningKey};
 use zeroize::Zeroizing;
 
 use crate::{ProvisionError, Result, der};
@@ -107,28 +111,21 @@ impl KeyPair {
             .map(|signature| signature.as_ref().to_vec())
             .map_err(|_| ProvisionError::new("signing failed"))
     }
-
-    /// An ECDSA signature over `message` with SHA-256, `r` and `s` fixed
-    /// width, as JWS's ES256 carries it.
-    ///
-    /// # Errors
-    ///
-    /// Where the random source fails.
-    pub fn sign_fixed(&self, message: &[u8]) -> Result<Vec<u8>> {
-        self.fixed
-            .sign(&SystemRandom::new(), message)
-            .map(|signature| signature.as_ref().to_vec())
-            .map_err(|_| ProvisionError::new("signing failed"))
-    }
 }
 
-/// Whether `signature`, `r` and `s` fixed width, is `point`'s over
-/// `message`.
-#[must_use]
-pub fn verify_fixed(point: &[u8], message: &[u8], signature: &[u8]) -> bool {
-    UnparsedPublicKey::new(&ECDSA_P256_SHA256_FIXED, point)
-        .verify(message, signature)
-        .is_ok()
+/// ES256: an ECDSA signature over `input` with SHA-256, `r` and `s` fixed
+/// width, as a JWS carries it (RFC 7518 section 3.4).
+impl SigningKey for KeyPair {
+    fn algorithm(&self) -> Algorithm {
+        Algorithm::Es256
+    }
+
+    fn sign(&self, input: &[u8]) -> jose::Result<Vec<u8>> {
+        self.fixed
+            .sign(&SystemRandom::new(), input)
+            .map(|signature| signature.as_ref().to_vec())
+            .map_err(|_| JoseError::new("signing failed"))
+    }
 }
 
 /// The SHA-256 fingerprint of a certificate's `der`, hexadecimal and
@@ -153,9 +150,12 @@ mod tests {
         let signature = again.sign(b"signed").expect("signs");
         assert!(tls::certificate::verify(key.point(), b"signed", &signature));
         assert!(!tls::certificate::verify(key.point(), b"other", &signature));
-        let fixed = again.sign_fixed(b"signed").expect("signs");
+        let fixed = SigningKey::sign(&again, b"signed").expect("signs");
         assert_eq!(fixed.len(), 64);
-        assert!(verify_fixed(key.point(), b"signed", &fixed));
+        assert_eq!(SigningKey::algorithm(&again), Algorithm::Es256);
+        let public = jose::jwk::Key::p256_point(None, key.point()).expect("a P-256 key");
+        assert!(public.verifies(b"signed", &fixed));
+        assert!(!public.verifies(b"other", &fixed));
         assert!(format!("{key:?}").contains("not shown"));
     }
 
