@@ -98,7 +98,7 @@ pub use der::key_identifier;
 pub use error::ProvisionError;
 pub use files::Files;
 pub use issuer::Issuer;
-pub use key::{KeyPair, fingerprint, verify_fixed};
+pub use key::{KeyPair, fingerprint};
 pub use provisioned::Provisioned;
 pub use provisioner::Provisioner;
 pub use purpose::Purpose;

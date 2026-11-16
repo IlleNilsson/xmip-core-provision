@@ -45,3 +45,11 @@ impl From<codec::CodecError> for ProvisionError {
         Self::new(error.message)
     }
 }
+
+/// A JWS or a JWK that is not what it claims (`xmip-core-library-jose`), as
+/// ACME's requests carry them.
+impl From<jose::JoseError> for ProvisionError {
+    fn from(error: jose::JoseError) -> Self {
+        Self::new(error.message)
+    }
+}

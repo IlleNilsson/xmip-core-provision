@@ -124,9 +124,11 @@ kept apart from how it is used. Created 2026-10-13 (ADR-0033, amendment
   folder it left is removed at the next write.
 - **`KeyPair`, `csr`, `Draft`** — the P-256 key, the PKCS #10 request and
   the X.509 certificate, written once over `xmip-core-library-asn1` and
-  signed with aws-lc-rs, the crypto the TLS library already builds;
-  `verify_fixed` checks a JWS signature, `r` and `s` fixed width; `serves`
-  reads whether a certificate authenticates what its purpose needs.
+  signed with aws-lc-rs, the crypto the TLS library already builds; the
+  key pair signs a JWS as ES256 through `xmip-core-library-jose`'s
+  `SigningKey`, and the library checks it (`jose::jwk::Key`, ADR-0034,
+  amendment 2026-11-16); `serves` reads whether a certificate
+  authenticates what its purpose needs.
 - **`read`, `NAMES`, `FILES`, `Files`** — `[provision.<purpose>]` read
   through the chosen technology's settings declaration, refused in words
   when incomplete; a table with no `source` is the operator's own files.

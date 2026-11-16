@@ -40,6 +40,15 @@ zeroize = "1"
 # keep on disk is a private file (secret::private_file), owner-only before
 # its first byte, synced and switched whole — written there, once.
 secret = { package = "xmip-core-secret", git = "https://github.com/IlleNilsson/xmip-core-secret", branch = "main" }
+# JOSE, the estate's one copy: the key pair signs a JWS as ES256 through its
+# `SigningKey` (an ACME account's requests), and this crate's error takes the
+# library's failures with `From`. Its keys stay off here.
+jose = { package = "xmip-core-library-jose", git = "https://github.com/IlleNilsson/xmip-core-library-jose", branch = "main" }
+
+[dev-dependencies]
+# The key pair's ES256 signature checked by the library's key, as an ACME
+# server checks an account's.
+jose = { package = "xmip-core-library-jose", git = "https://github.com/IlleNilsson/xmip-core-library-jose", branch = "main", features = ["key"] }
 
 [lints.rust]
 # forbid, not deny: a module has no business writing unsafe. The one exception

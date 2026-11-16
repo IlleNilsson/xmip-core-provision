@@ -215,7 +215,7 @@ mod tests {
         let (outer, _) = asn1::expect(&der, asn1::SEQUENCE).expect("certificate");
         let (_, tbs_contents, after) = asn1::read(outer).expect("tbs");
         let tbs = &outer[..outer.len() - after.len()];
-        assert_ne!(tbs_contents, []);
+        assert_ne!(tbs_contents, [0u8; 0]);
         let (_, signature) = {
             let (algorithm, rest) = asn1::expect(after, asn1::SEQUENCE).expect("algorithm");
             (

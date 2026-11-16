@@ -224,7 +224,7 @@ mod tests {
         }
 
         let information = information("erin@example.org", keeper.point()).expect("information");
-        let fixed = keeper.sign_fixed(&information).expect("signed");
+        let fixed = jose::jws::SigningKey::sign(&keeper, &information).expect("signed");
         let refused = assemble(&information, &fixed).expect_err("a fixed-width signature");
         assert!(refused.message.contains("DER"), "{refused}");
         let other = KeyPair::generate().expect("a key");
