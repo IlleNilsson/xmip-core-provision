@@ -288,7 +288,7 @@ impl Register {
             .ok()
             .and_then(|kept| crl::read(&kept).ok())
             .map_or(0, |listed| listed.number);
-        let number = u64::try_from(now).unwrap_or(0).max(last + 1);
+        let number = xcore::clock::serial(last, i128::from(now));
         let der = crl::write(name, key, &revoked, number, (now, now + LIST_LIFETIME))?;
         private_file::replace_readable(&path, &der).map_err(|failure| failed(&path, &failure))?;
         Ok(der)
