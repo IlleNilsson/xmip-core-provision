@@ -229,13 +229,7 @@ fn optional(path: &Path) -> Result<Option<String>> {
 mod tests {
     use super::*;
     use crate::{Draft, KeyPair, Usage};
-
-    fn place(test: &str) -> std::path::PathBuf {
-        let path =
-            std::env::temp_dir().join(format!("xmip-provisioned-{test}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
-        path.join("node")
-    }
+    use file::temporary::Folder;
 
     fn identity(subject: &str) -> Provisioned {
         let key = KeyPair::generate().expect("a key");
@@ -285,7 +279,8 @@ mod tests {
 
     #[test]
     fn an_identity_is_read_back_whole_and_its_key_is_the_owners_alone() {
-        let place = place("whole");
+        let base = Folder::new("provisioned-whole");
+        let place = base.join("node");
         assert!(Provisioned::read(&place).expect("read").is_none());
         let first = identity("first");
         first.write(&place).expect("kept");
@@ -311,12 +306,12 @@ mod tests {
         assert!(matches(&read, &second));
         assert!(read.anchors.is_none(), "no anchors left from the first");
         assert_eq!(generations(&place), 1, "the first generation is removed");
-        let _ = std::fs::remove_dir_all(place.parent().expect("base"));
     }
 
     #[test]
     fn a_crash_before_the_switch_leaves_the_old_matching_identity() {
-        let place = place("crash");
+        let base = Folder::new("provisioned-crash");
+        let place = base.join("node");
         let old = identity("old");
         old.write(&place).expect("kept");
 
@@ -340,16 +335,15 @@ mod tests {
         let read = Provisioned::read(&place).expect("read").expect("kept");
         assert!(matches(&read, &next));
         assert_eq!(generations(&place), 1);
-        let _ = std::fs::remove_dir_all(place.parent().expect("base"));
     }
 
     #[test]
     fn a_current_that_names_no_generation_is_refused() {
-        let place = place("pointer");
+        let base = Folder::new("provisioned-pointer");
+        let place = base.join("node");
         private_file::directory(&place).expect("made");
         private_file::replace(&place.join(CURRENT), b"../elsewhere").expect("written");
         let refused = Provisioned::read(&place).expect_err("refused");
         assert!(refused.message.contains("names no generation"), "{refused}");
-        let _ = std::fs::remove_dir_all(place.parent().expect("base"));
     }
 }

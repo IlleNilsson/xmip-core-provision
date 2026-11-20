@@ -217,8 +217,7 @@ impl Register {
             text.lines()
                 .filter_map(|line| line.split_once('='))
                 .find(|(name, _)| name.trim() == key)
-                .map(|(_, value)| value.trim().to_string())
-                .unwrap_or_default()
+                .map_or_default(|(_, value)| value.trim().to_string())
         };
         Ok(Some(Revoked {
             serial: bytes.to_vec(),

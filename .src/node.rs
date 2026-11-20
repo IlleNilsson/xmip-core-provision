@@ -107,8 +107,7 @@ mod tests {
 
     #[test]
     fn a_node_is_issued_for_its_names_under_the_authority_kept_with_its_anchor() {
-        let base = std::env::temp_dir().join(format!("xmip-provision-node-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
+        let base = file::temporary::Folder::new("provision-node");
         let authority = base.join("authority");
         let names = ["node.example".to_string(), "cluster.example".to_string()];
         let folder = base.join("node");
@@ -143,6 +142,5 @@ mod tests {
 
         let refused = issue_into(&authority, "x", " ", &names, &folder, 0).expect_err("no node");
         assert!(refused.message.contains("node"), "{refused}");
-        std::fs::remove_dir_all(&base).expect("removes what it wrote");
     }
 }

@@ -141,8 +141,7 @@ mod tests {
 
     #[test]
     fn a_host_is_issued_under_the_authority_kept_and_one_is_made_where_none_is() {
-        let base = std::env::temp_dir().join(format!("xmip-provision-host-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
+        let base = file::temporary::Folder::new("provision-host");
         let authority = base.join("authority");
         let first = issue_into(
             &authority,
@@ -182,6 +181,5 @@ mod tests {
 
         let refused = issue_into(&authority, "x", " ", &base, 0).expect_err("no host");
         assert!(refused.message.contains("host"), "{refused}");
-        let _ = std::fs::remove_dir_all(&base);
     }
 }

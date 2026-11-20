@@ -49,6 +49,8 @@ jose = { package = "xmip-core-library-jose", git = "https://github.com/IlleNilss
 # The key pair's ES256 signature checked by the library's key, as an ACME
 # server checks an account's.
 jose = { package = "xmip-core-library-jose", git = "https://github.com/IlleNilsson/xmip-core-library-jose", branch = "main", features = ["key"] }
+# A test's own temporary folder (`file::temporary`); for the tests only.
+file = { package = "xmip-core-library-file", git = "https://github.com/IlleNilsson/xmip-core-library-file", branch = "main", features = ["test-support"] }
 
 [lints.rust]
 # forbid, not deny: a module has no business writing unsafe. The one exception
