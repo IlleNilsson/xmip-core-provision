@@ -237,10 +237,8 @@ mod tests {
 
     #[test]
     fn a_request_is_written_into_a_folder_its_key_private_and_never_over_a_file() {
-        let folder = std::env::temp_dir()
-            .join(format!("xmip-provision-request-{}", std::process::id()))
-            .join("phone");
-        let _ = std::fs::remove_dir_all(folder.parent().expect("base"));
+        let base = file::temporary::Folder::new("provision-request");
+        let folder = base.join("phone");
         let written = request_into("frank@example.org", &folder).expect("written");
         assert_eq!(written.key, folder.join(KEY_FILE));
         let key = std::fs::read_to_string(&written.key).expect("key");
@@ -270,13 +268,11 @@ mod tests {
         let other = folder.with_file_name("other");
         assert!(request_into("CN=frank", &other).is_err());
         assert!(!other.join(KEY_FILE).exists(), "a refusal writes nothing");
-        let _ = std::fs::remove_dir_all(folder.parent().expect("base"));
     }
 
     #[test]
     fn a_chain_is_replaced_where_asked_and_else_never_written_over_a_file() {
-        let base = std::env::temp_dir().join(format!("xmip-provision-keep-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
+        let base = file::temporary::Folder::new("provision-keep");
         let chain = base.join("operator.pem");
         keep(&chain, "first", false).expect("created");
         let refused = keep(&chain, "second", false).expect_err("there already");
@@ -287,7 +283,6 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&chain).expect("kept"), "first");
         keep(&chain, "renewed", true).expect("replaced");
         assert_eq!(std::fs::read_to_string(&chain).expect("kept"), "renewed");
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     fn information_refused(public: &[u8]) -> bool {
@@ -296,8 +291,7 @@ mod tests {
 
     #[test]
     fn a_request_is_signed_by_the_authority_the_operator_table_names_for_its_lifetime() {
-        let base =
-            std::env::temp_dir().join(format!("xmip-provision-operator-{}", std::process::id()));
+        let base = file::temporary::Folder::new("provision-operator");
         let place = base.join("ca");
         std::fs::create_dir_all(&place).expect("made");
         let key = KeyPair::generate().expect("a key");
@@ -335,6 +329,5 @@ mod tests {
             "{refused}"
         );
         assert!(request("CN=dave").is_err());
-        let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -348,6 +348,7 @@ mod tests {
     use crate::der::{extension, name, oid, sequence};
     use crate::operator;
     use asn1::{INTEGER, SEQUENCE, SET, tlv};
+    use file::temporary::Folder;
     use tls::certificate::oid::{
         BASIC_CONSTRAINTS, CLIENT_AUTH, COMMON_NAME, EXTENSION_REQUEST, SERVER_AUTH,
         SUBJECT_ALT_NAME,
@@ -464,8 +465,8 @@ mod tests {
 
     #[test]
     fn an_authority_not_kept_is_refused_and_one_kept_is_read() {
-        let place =
-            std::env::temp_dir().join(format!("xmip-provision-issuer-{}", std::process::id()));
+        let folder = Folder::new("provision-issuer");
+        let place = folder.join("authority");
         let refused = Issuer::kept(&place).expect_err("nothing kept");
         assert!(
             refused.message.contains("no authority is kept"),
@@ -477,14 +478,6 @@ mod tests {
         std::fs::write(place.join(CERTIFICATE), issuer.certificate()).expect("certificate");
         let kept = Issuer::kept(&place).expect("kept");
         assert_eq!(kept.certificate(), issuer.certificate());
-        let _ = std::fs::remove_dir_all(&place);
-    }
-
-    fn place(test: &str) -> std::path::PathBuf {
-        let path =
-            std::env::temp_dir().join(format!("xmip-provision-kept-{test}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&path);
-        path.join("authority")
     }
 
     /// Whether the certificate kept in `place` is for the key kept beside it.
@@ -499,7 +492,8 @@ mod tests {
 
     #[test]
     fn an_authority_is_made_and_kept_privately_and_read_back_as_it_was() {
-        let place = place("kept");
+        let folder = Folder::new("provision-kept");
+        let place = folder.join("authority");
         let made = Issuer::kept_or_made(&place, "cluster", 1_800_000_000, 3600).expect("made");
         let again = Issuer::kept_or_made(&place, "cluster", 1_800_000_000, 3600).expect("read");
         assert_eq!(made.certificate(), again.certificate());
@@ -518,36 +512,36 @@ mod tests {
                 assert_eq!(described(&place), owner(true));
             }
         }
-        let _ = std::fs::remove_dir_all(place.parent().expect("base"));
     }
 
     #[test]
     fn a_crash_between_the_certificate_and_the_key_leaves_a_matching_pair_next_time() {
-        let place = place("crash");
+        let folder = Folder::new("provision-crash");
+        let place = folder.join("authority");
         let other = Issuer::made("before the crash", 1_800_000_000, 3600).expect("made");
         private_file::replace(&place.join(CERTIFICATE), other.certificate().as_bytes())
             .expect("the certificate a crash left");
         let made = Issuer::kept_or_made(&place, "cluster", 1_800_000_000, 3600).expect("made");
         assert_ne!(made.certificate(), other.certificate());
         assert!(matching(&place), "the certificate is for the key beside it");
-        let _ = std::fs::remove_dir_all(place.parent().expect("base"));
     }
 
     #[test]
     fn a_key_kept_with_no_certificate_is_given_one_for_it() {
-        let place = place("lone-key");
+        let folder = Folder::new("provision-lone-key");
+        let place = folder.join("authority");
         let key = KeyPair::generate().expect("a key");
         private_file::create(&place.join(KEY), key.pem().as_bytes()).expect("the lone key");
         let kept = Issuer::kept_or_made(&place, "cluster", 1_800_000_000, 3600).expect("kept");
         assert_eq!(kept.key().public_key_info(), key.public_key_info());
         assert!(matching(&place), "the certificate is for the key kept");
-        let _ = std::fs::remove_dir_all(place.parent().expect("base"));
     }
 
     #[test]
     fn makers_racing_for_one_place_all_hold_the_pair_kept_and_everything_issued_verifies() {
         const MAKERS: usize = 8;
-        let place = place("race");
+        let folder = Folder::new("provision-race");
+        let place = folder.join("authority");
         let barrier = std::sync::Barrier::new(MAKERS);
         let (start, at) = (&barrier, place.as_path());
         let made: Vec<Issuer> = std::thread::scope(|scope| {
@@ -583,6 +577,5 @@ mod tests {
             let issued = Certificate::read(&leaf(&chain)).expect("the leaf reads");
             assert!(issued.signed_by(&parsed).expect("verified"), "it verifies");
         }
-        let _ = std::fs::remove_dir_all(place.parent().expect("base"));
     }
 }

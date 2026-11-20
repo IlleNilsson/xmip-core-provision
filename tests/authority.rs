@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use codec::pem;
+use file::temporary::Folder;
 use tls::certificate::Certificate;
 use xmip_core_provision::carried::{self, NEXT_KEY_FILE, REQUEST_FILE};
 use xmip_core_provision::crl::{self, Reason};
@@ -16,23 +17,16 @@ use xmip_core_provision::{Issuer, KeyPair, Purpose, node};
 
 const NOW: i64 = 1_800_000_000;
 
-/// A fresh folder of its own, removed on drop.
-struct Place(PathBuf);
+/// A place of its own, not made yet, in a folder removed on drop.
+struct Place(
+    PathBuf,
+    #[expect(dead_code, reason = "held for its drop, which removes the folder")] Folder,
+);
 
 impl Place {
     fn new(test: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "xmip-provision-{test}-{}-{}",
-            std::process::id(),
-            codec::hex::encode(&codec::random::array::<4>())
-        ));
-        Self(path)
-    }
-}
-
-impl Drop for Place {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        let folder = Folder::new(&format!("provision-{test}"));
+        Self(folder.join("place"), folder)
     }
 }
 
