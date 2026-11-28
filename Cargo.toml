@@ -15,18 +15,18 @@ path = ".src/lib.rs"
 # The settings shape every technology declares its configuration in, and the
 # one reading of it (ADR-0044, amendment 2026-09-26); and the one clock
 # (xcore::Clock) a provisioner renews by.
-xcore = { package = "xmip-core", git = "https://github.com/IlleNilsson/xmip-core", branch = "main" }
+xcore = { workspace = true }
 # X.690, written and read once for the estate: the CSR and the certificate
 # are DER.
-asn1 = { package = "xmip-core-library-asn1", git = "https://github.com/IlleNilsson/xmip-core-library-asn1", branch = "main" }
+asn1 = { workspace = true }
 # PEM, the civil calendar for a certificate's times, SHA-256 for a key
 # identifier and a fingerprint, and the estate's one random source for a
 # serial number.
-codec = { package = "xmip-core-library-codec", git = "https://github.com/IlleNilsson/xmip-core-library-codec", branch = "main" }
+codec = { workspace = true }
 # The estate's one certificate reader (`tls::certificate`): what this
 # capability writes it reads back there — a certificate, a request's
 # subject and names, a time, a key — and a P-256 signature is checked there.
-tls = { package = "xmip-core-library-tls", git = "https://github.com/IlleNilsson/xmip-core-library-tls", branch = "main" }
+tls = { workspace = true }
 # The crypto xmip-core-library-tls already builds (rustls's default
 # provider): P-256 keys and their ECDSA signatures. Its assembler comes
 # prebuilt, so a Windows build needs no NASM.
@@ -36,18 +36,18 @@ zeroize = "1"
 # The key home: every key and identity this capability and its technologies
 # keep on disk is a private file (secret::private_file), owner-only before
 # its first byte, synced and switched whole — written there, once.
-secret = { package = "xmip-core-secret", git = "https://github.com/IlleNilsson/xmip-core-secret", branch = "main" }
+secret = { workspace = true }
 # JOSE, the estate's one copy: the key pair signs a JWS as ES256 through its
 # `SigningKey` (an ACME account's requests), and this crate's error takes the
 # library's failures with `From`. Its keys stay off here.
-jose = { package = "xmip-core-library-jose", git = "https://github.com/IlleNilsson/xmip-core-library-jose", branch = "main" }
+jose = { workspace = true }
 
 [dev-dependencies]
 # The key pair's ES256 signature checked by the library's key, as an ACME
 # server checks an account's.
-jose = { package = "xmip-core-library-jose", git = "https://github.com/IlleNilsson/xmip-core-library-jose", branch = "main", features = ["key"] }
+jose = { workspace = true, features = ["key"] }
 # A test's own temporary folder (`file::temporary`); for the tests only.
-file = { package = "xmip-core-library-file", git = "https://github.com/IlleNilsson/xmip-core-library-file", branch = "main", features = ["test-support"] }
+file = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true
